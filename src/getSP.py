@@ -513,7 +513,7 @@ def analyze_video_features(video_path, start_offset=28, sampling_interval=30):
 
 
 # 快速使用函数
-def quick_extract_features(video_path="root/a.mp4", output_name="video_blur_features.xlsx"):
+def quick_extract_features(video_path="root/airport_video.mp4", output_name="video_blur_features.xlsx"):
     """
     快速特征提取函数
 
@@ -602,11 +602,11 @@ def demonstrate_feature_correlation():
 
 if __name__ == "__main__":
     # 检查视频文件
-    video_path = r"D:\GitHub_local\JXSTSXJM-Code\机场视频\a.mp4"  # 根据您的描述，可能需要修改扩展名
+    video_path = "../机场视频/a.mp4"  # 根据您的描述，可能需要修改扩展名
 
     # 尝试不同的视频格式
     possible_paths = [
-        r"D:\GitHub_local\JXSTSXJM-Code\机场视频\a.mp4"
+        "../机场视频/a.mp4"
     ]
 
     video_found = False

@@ -39,6 +39,14 @@ from scipy.optimize import curve_fit
 # 关闭警告信息
 warnings.filterwarnings('ignore')
 
+# 创建结果保存目录
+RESULTS_DIR = "../results"
+if not os.path.exists(RESULTS_DIR):
+    os.makedirs(RESULTS_DIR)
+    print(f"创建结果目录: {RESULTS_DIR}")
+else:
+    print(f"结果将保存到: {RESULTS_DIR}")
+
 # 设置matplotlib中文显示
 plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans']
 plt.rcParams['axes.unicode_minus'] = False
@@ -58,10 +66,10 @@ class FileManager:
     def __init__(self):
         """初始化文件管理器"""
         self.files_info = {
-            "VIS_R06_12.his": "能见度数据文件",
-            "PTU_R06_12.his": "气象数据文件", 
-            "WIND_R06_12.his": "风速数据文件",
-            "airport_video.mp4": "机场视频文件(可选)"
+            "../AMOS20200313/VIS_R06_12.his": "能见度数据文件",
+            "../AMOS20200313/PTU_R06_12.his": "气象数据文件", 
+            "../AMOS20200313/WIND_R06_12.his": "风速数据文件",
+            "../机场视频/a.mp4": "机场视频文件(可选)"
         }
     
     def check_files(self) -> Tuple[List[str], List[str]]:
@@ -104,7 +112,7 @@ class DataLoader:
     """
     
     @staticmethod
-    def load_and_analyze_vis_file(filename: str = "VIS_R06_12.his") -> Optional[List[Tuple[int, List[str]]]]:
+    def load_and_analyze_vis_file(filename: str = "../AMOS20200313/VIS_R06_12.his") -> Optional[List[Tuple[int, List[str]]]]:
         """
         加载并分析VIS能见度数据文件
         
@@ -162,7 +170,7 @@ class DataLoader:
             return None
     
     @staticmethod
-    def load_and_analyze_ptu_file(filename: str = "PTU_R06_12.his") -> Optional[List[Tuple[int, List[str]]]]:
+    def load_and_analyze_ptu_file(filename: str = "../AMOS20200313/PTU_R06_12.his") -> Optional[List[Tuple[int, List[str]]]]:
         """
         加载并分析PTU气象数据文件
         
@@ -223,7 +231,7 @@ class DataLoader:
             return None
     
     @staticmethod
-    def load_and_analyze_wind_file(filename: str = "WIND_R06_12.his") -> Optional[List[Tuple[int, List[str]]]]:
+    def load_and_analyze_wind_file(filename: str = "../AMOS20200313/WIND_R06_12.his") -> Optional[List[Tuple[int, List[str]]]]:
         """
         加载并分析WIND风速数据文件
         
@@ -290,7 +298,7 @@ class VideoProcessor:
     """
     
     @staticmethod
-    def check_video_file(filename: str = "airport_video.mp4") -> Optional[Dict[str, Union[float, int]]]:
+    def check_video_file(filename: str = "../机场视频/a.mp4") -> Optional[Dict[str, Union[float, int]]]:
         """
         检查视频文件信息
         
@@ -366,7 +374,7 @@ class DataParser:
     """
     
     @staticmethod
-    def parse_vis_data(filename: str = "VIS_R06_12.his") -> List[Dict[str, Union[str, float]]]:
+    def parse_vis_data(filename: str = "../AMOS20200313/VIS_R06_12.his") -> List[Dict[str, Union[str, float]]]:
         """
         解析VIS能见度数据文件
         
@@ -415,7 +423,7 @@ class DataParser:
         return vis_data
     
     @staticmethod
-    def parse_ptu_data(filename: str = "PTU_R06_12.his") -> List[Dict[str, Union[str, float]]]:
+    def parse_ptu_data(filename: str = "../AMOS20200313/PTU_R06_12.his") -> List[Dict[str, Union[str, float]]]:
         """
         解析PTU气象数据文件
         
@@ -467,7 +475,7 @@ class DataParser:
         return ptu_data
     
     @staticmethod
-    def parse_wind_data(filename: str = "WIND_R06_12.his") -> List[Dict[str, Union[str, float]]]:
+    def parse_wind_data(filename: str = "../AMOS20200313/WIND_R06_12.his") -> List[Dict[str, Union[str, float]]]:
         """
         解析WIND风速数据文件
         
@@ -821,7 +829,7 @@ class VideoDataProcessor:
     提取时间同步的图像特征和气象特征。
     """
     
-    def __init__(self, merged_data: List[Dict], video_filename: str = "airport_video.mp4"):
+    def __init__(self, merged_data: List[Dict], video_filename: str = "../机场视频/a.mp4"):
         """
         初始化视频数据处理器
         
@@ -1061,6 +1069,14 @@ class Visualizer:
         
         plt.colorbar(im, ax=axes[2, 2])
         plt.tight_layout()
+        
+        # 保存图表到结果目录
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{RESULTS_DIR}/preliminary_visualizations_{timestamp}.png"
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        print(f"初步可视化图表已保存到: {filename}")
+        
+        # 显示图表
         plt.show()
         
         # 输出关键发现
@@ -1552,6 +1568,13 @@ class AirportWeatherAnalysis:
         plt.grid(True, alpha=0.3)
         
         plt.tight_layout()
+        
+        # 保存图表到结果目录
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{RESULTS_DIR}/comprehensive_visualization_{timestamp}.png"
+        plt.savefig(filename, dpi=300, bbox_inches='tight')
+        print(f"综合可视化图表已保存到: {filename}")
+        
         plt.show()
 
     def output_final_mathematical_model(self) -> None:
@@ -1649,6 +1672,57 @@ class AirportWeatherAnalysis:
             'features_data_count': len(self.features_data) if self.features_data else 0,
             'models_available': self.models_results is not None
         }
+        
+        # 保存分析结果摘要到文本文件
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"{RESULTS_DIR}/analysis_summary_{timestamp}.txt"
+        
+        with open(filename, "w", encoding="utf-8") as f:
+            f.write("=" * 50 + "\n")
+            f.write("机场天气分析结果摘要\n")
+            f.write("=" * 50 + "\n\n")
+            
+            f.write(f"分析时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            
+            f.write("数据统计:\n")
+            f.write(f"  能见度数据记录: {summary['vis_data_count']} 条\n")
+            f.write(f"  气象数据记录: {summary['ptu_data_count']} 条\n")
+            f.write(f"  风速数据记录: {summary['wind_data_count']} 条\n")
+            f.write(f"  合并后数据记录: {summary['merged_data_count']} 条\n")
+            f.write(f"  特征提取样本数: {summary['features_data_count']} 个\n")
+            f.write(f"  模型构建状态: {'成功' if summary['models_available'] else '未构建'}\n\n")
+            
+            # 添加可见度范围信息
+            if self.vis_data:
+                visibility_values = [d['visibility'] for d in self.vis_data]
+                f.write(f"能见度范围: {min(visibility_values):.1f}m - {max(visibility_values):.1f}m\n")
+                
+                # 计算雾事件比例 (能见度 < 1000m)
+                fog_events = sum(1 for v in visibility_values if v < 1000)
+                fog_ratio = fog_events / len(visibility_values) * 100
+                severe_fog = sum(1 for v in visibility_values if v < 500)
+                severe_fog_ratio = severe_fog / len(visibility_values) * 100
+                
+                f.write("\n雾事件统计:\n")
+                f.write(f"  严重雾霾 (能见度<500m): {severe_fog} 次 ({severe_fog_ratio:.1f}%)\n")
+                f.write(f"  轻度雾霾 (能见度<1000m): {fog_events} 次 ({fog_ratio:.1f}%)\n")
+            
+            # 添加温度湿度风速范围
+            if self.ptu_data:
+                temp_values = [d['temperature'] for d in self.ptu_data]
+                humid_values = [d['humidity'] for d in self.ptu_data]
+                f.write(f"\n温度范围: {min(temp_values):.1f}°C - {max(temp_values):.1f}°C\n")
+                f.write(f"湿度范围: {min(humid_values):.1f}% - {max(humid_values):.1f}%\n")
+            
+            if self.wind_data:
+                wind_values = [d['wind_speed_2a'] for d in self.wind_data]
+                f.write(f"风速范围: {min(wind_values):.1f}m/s - {max(wind_values):.1f}m/s\n")
+            
+            f.write("\n" + "=" * 50 + "\n")
+            f.write("机场天气分析完成！\n")
+            f.write("=" * 50 + "\n")
+        
+        print(f"分析结果摘要已保存到: {filename}")
         return summary
 
 
@@ -1659,6 +1733,13 @@ def main():
     创建分析系统实例并运行完整的分析流程。
     """
     try:
+        # 确保结果目录存在
+        if not os.path.exists(RESULTS_DIR):
+            os.makedirs(RESULTS_DIR)
+            print(f"创建结果目录: {RESULTS_DIR}")
+        else:
+            print(f"结果将保存到: {RESULTS_DIR}")
+        
         # 创建分析系统
         analysis_system = AirportWeatherAnalysis()
         
