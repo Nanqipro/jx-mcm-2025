@@ -1336,106 +1336,116 @@ class ContinuousVisibilityModel:
 
     def run_complete_analysis(self, data_path: str, prediction_steps: int = 60) -> Dict[str, Any]:
         """
-        运行完整的连续变化数学建模分析
+        运行完整的能见度连续变化数学建模分析
         
         Parameters
         ----------
         data_path : str
             数据文件路径
         prediction_steps : int
-            预测步数
+            预测步数，默认60步
             
         Returns
         -------
         Dict[str, Any]
-            完整分析结果
+            分析结果汇总
         """
-        print("🎯 启动能见度连续变化数学建模系统")
+        print("\n" + "="*80)
+        print("🚀 江西省数学建模比赛 - 问题二：能见度连续变化数学模型")
         print("="*80)
         
+        start_time = datetime.now()
         results = {}
         
         try:
-            # 步骤1: 数据加载和预处理
+            # 1. 数据加载与预处理
+            print("\n【步骤1】数据加载与预处理")
             if not self.load_and_preprocess_data(data_path):
-                return results
+                return {"success": False, "error": "数据加载失败"}
             
-            # 步骤2: 时间序列特征分析
+            # 2. 时间序列特征分析
+            print("\n【步骤2】时间序列特征分析")
             ts_analysis = self.analyze_time_series_characteristics()
             results['time_series_analysis'] = ts_analysis
             
-            # 步骤3: 构建连续数学模型
-            print("\n" + "="*50)
-            print("开始构建连续数学模型...")
-            print("="*50)
-            
-            model_build_results = {}
+            # 3. 构建连续数学模型
+            print("\n【步骤3】构建连续数学模型")
             
             # 3.1 微分方程模型
-            print("💫 [1/4] 构建微分方程雾演化模型...")
-            diff_eq_model = self.build_differential_equation_model()
-            if diff_eq_model:
-                results['differential_equation'] = diff_eq_model
-                model_build_results['微分方程模型'] = '✅ 成功' if diff_eq_model.get('success') else '❌ 失败'
-            else:
-                model_build_results['微分方程模型'] = '❌ 失败'
+            print("  🔬 构建微分方程模型...")
+            diff_model = self.build_differential_equation_model()
+            if diff_model:
+                self.models['differential_equation'] = diff_model
+                results['differential_equation_model'] = diff_model
             
             # 3.2 状态空间模型
-            print("🎯 [2/4] 构建状态空间模型...")
-            state_space_model = self.build_state_space_model()
-            if state_space_model:
-                results['state_space'] = state_space_model
-                model_build_results['状态空间模型'] = '✅ 成功' if state_space_model.get('success') else '❌ 失败'
-            else:
-                model_build_results['状态空间模型'] = '❌ 失败'
+            print("  🔬 构建状态空间模型...")
+            state_model = self.build_state_space_model()
+            if state_model:
+                self.models['state_space'] = state_model
+                results['state_space_model'] = state_model
             
             # 3.3 非线性动力学模型
-            print("🌀 [3/4] 构建非线性动力学模型...")
+            print("  🔬 构建非线性动力学模型...")
             nonlinear_model = self.build_nonlinear_dynamics_model()
             if nonlinear_model:
-                results['nonlinear_dynamics'] = nonlinear_model
-                model_build_results['非线性动力学模型'] = '✅ 成功' if nonlinear_model.get('success') else '❌ 失败'
-            else:
-                model_build_results['非线性动力学模型'] = '❌ 失败'
+                self.models['nonlinear_dynamics'] = nonlinear_model
+                results['nonlinear_dynamics_model'] = nonlinear_model
             
             # 3.4 集成模型
-            print("🎯 [4/4] 构建集成模型...")
+            print("  🔬 构建集成模型...")
             ensemble_model = self.build_ensemble_model()
             if ensemble_model:
-                results['ensemble'] = ensemble_model
-                model_build_results['集成模型'] = '✅ 成功' if ensemble_model.get('success') else '❌ 失败'
-            else:
-                model_build_results['集成模型'] = '❌ 失败'
+                self.models['ensemble'] = ensemble_model
+                results['ensemble_model'] = ensemble_model
             
-            # 显示模型构建总结
-            print("\n📊 模型构建总结:")
-            for model_name, status in model_build_results.items():
-                print(f"   • {model_name}: {status}")
+            # 4. 生成论文专用可视化图表
+            print("\n【步骤4】生成论文专用可视化图表")
+            self.create_paper_specific_visualizations()
             
-            successful_models = sum(1 for status in model_build_results.values() if '✅' in status)
-            print(f"\n🎉 成功构建 {successful_models}/{len(model_build_results)} 个模型")
-            
-            # 步骤4: 生成综合可视化
+            # 5. 生成综合可视化分析
+            print("\n【步骤5】生成综合可视化分析")
             self.create_comprehensive_visualization()
             
-            # 步骤5: 未来预测
+            # 6. 连续预测
+            print("\n【步骤6】生成连续预测")
             prediction_results = self.generate_continuous_prediction(prediction_steps)
-            if prediction_results:
-                results['prediction'] = prediction_results
+            results['prediction'] = prediction_results
             
-            # 步骤6: 生成综合报告
+            # 7. 提取详细模型参数
+            print("\n【步骤7】提取详细模型参数")
+            self.extract_detailed_model_parameters()
+            
+            # 8. 生成综合报告
+            print("\n【步骤8】生成综合分析报告")
             self.generate_comprehensive_report()
             
-            results['analysis_completed'] = True
-            results['best_model'] = self._get_best_model()
+            # 计算总耗时
+            end_time = datetime.now()
+            total_time = (end_time - start_time).total_seconds()
+            
+            # 汇总结果
+            results.update({
+                'success': True,
+                'total_models': len(self.models),
+                'successful_models': sum(1 for m in self.models.values() if m.get('success', False)),
+                'best_model': self._get_best_model(),
+                'execution_time_seconds': total_time,
+                'data_points': len(self.visibility),
+                'train_points': len(self.visibility_train),
+                'test_points': len(self.visibility_test)
+            })
+            
+            print(f"\n✅ 分析完成！总耗时: {total_time:.2f}秒")
+            print(f"📊 成功构建 {results['successful_models']}/{results['total_models']} 个模型")
             
             return results
             
         except Exception as e:
-            print(f"❌ 分析过程中发生错误: {e}")
+            print(f"\n❌ 分析过程出错: {e}")
             import traceback
             traceback.print_exc()
-            return results
+            return {"success": False, "error": str(e)}
 
     def extract_detailed_model_parameters(self) -> None:
         """
@@ -1675,6 +1685,720 @@ class ContinuousVisibilityModel:
                 print("❌ 无法访问原始状态空间模型")
         else:
             print(f"\n💡 集成模型基于多个组件，无法提取单一模型的详细参数")
+
+    def create_paper_specific_visualizations(self) -> None:
+        """
+        为论文问题二生成专门的可视化图表
+        
+        包含：
+        1. 时间序列特征分析
+        2. 模型性能详细对比
+        3. 状态空间模型深度分析
+        4. 连续变化动力学分析
+        5. 模型性能对比表格
+        """
+        print("\n=== 生成论文专用可视化图表 ===")
+        
+        # 生成时间序列特征分析图表
+        self._create_time_series_analysis_charts()
+        
+        # 生成模型性能对比图表
+        self._create_model_performance_comparison()
+        
+        # 生成模型性能对比表格
+        self.create_model_performance_table()
+        
+        # 生成状态空间模型深度分析
+        self._create_state_space_detailed_analysis()
+        
+        # 生成连续变化动力学分析
+        self._create_continuous_dynamics_analysis()
+        
+        print("✅ 论文专用图表生成完成")
+
+    def _create_time_series_analysis_charts(self) -> None:
+        """创建时间序列特征分析图表"""
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('能见度时间序列特征分析', fontsize=16, fontweight='bold')
+        
+        # 1. 原始时间序列
+        ax1 = axes[0, 0]
+        ax1.plot(self.time_index, self.visibility, 'b-', linewidth=2, alpha=0.8)
+        ax1.set_xlabel('时间步长')
+        ax1.set_ylabel('能见度 (m)')
+        ax1.set_title('原始能见度时间序列')
+        ax1.grid(True, alpha=0.3)
+        
+        # 添加统计信息
+        stats_text = f'观测点数: {len(self.visibility)}\n'
+        stats_text += f'平均值: {np.mean(self.visibility):.1f}m\n'
+        stats_text += f'标准差: {np.std(self.visibility):.1f}m\n'
+        stats_text += f'变异系数: {np.std(self.visibility)/np.mean(self.visibility):.3f}\n'
+        stats_text += f'范围: {np.min(self.visibility):.1f}-{np.max(self.visibility):.1f}m'
+        
+        ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8),
+                verticalalignment='top', fontsize=9)
+        
+        # 2. 能见度分布
+        ax2 = axes[0, 1]
+        n, bins, patches = ax2.hist(self.visibility, bins=30, density=True, alpha=0.7,
+                                   color='lightblue', edgecolor='black')
+        
+        # 拟合正态分布
+        mu, sigma = stats.norm.fit(self.visibility)
+        x = np.linspace(self.visibility.min(), self.visibility.max(), 100)
+        ax2.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2,
+                label=f'正态分布拟合\nμ={mu:.1f}, σ={sigma:.1f}')
+        ax2.set_xlabel('能见度 (m)')
+        ax2.set_ylabel('概率密度')
+        ax2.set_title('能见度分布特征')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # 3. 变化率分析
+        ax3 = axes[0, 2]
+        vis_diff = np.diff(self.visibility)
+        ax3.plot(self.time_index[1:], vis_diff, 'g-', alpha=0.7, linewidth=1)
+        ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        ax3.set_xlabel('时间步长')
+        ax3.set_ylabel('变化率 (m/步)')
+        ax3.set_title('能见度变化率时间序列')
+        ax3.grid(True, alpha=0.3)
+        
+        # 添加变化率统计
+        change_stats = f'平均变化率: {np.mean(vis_diff):.2f}m/步\n'
+        change_stats += f'变化率标准差: {np.std(vis_diff):.2f}m/步\n'
+        change_stats += f'最大增幅: {np.max(vis_diff):.1f}m/步\n'
+        change_stats += f'最大降幅: {np.min(vis_diff):.1f}m/步'
+        
+        ax3.text(0.02, 0.98, change_stats, transform=ax3.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8),
+                verticalalignment='top', fontsize=9)
+        
+        # 4. 变化率分布
+        ax4 = axes[1, 0]
+        ax4.hist(vis_diff, bins=30, density=True, alpha=0.7, color='lightgreen', edgecolor='black')
+        ax4.axvline(x=0, color='red', linestyle='--', linewidth=2, label='零变化')
+        ax4.set_xlabel('变化率 (m/步)')
+        ax4.set_ylabel('概率密度')
+        ax4.set_title('能见度变化率分布')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+        
+        # 5. ADF检验结果
+        ax5 = axes[1, 1]
+        ax5.axis('off')
+        
+        # 执行ADF检验
+        adf_result = adfuller(self.visibility)
+        adf_text = 'ADF平稳性检验结果\n\n'
+        adf_text += f'ADF统计量: {adf_result[0]:.3f}\n'
+        adf_text += f'p值: {adf_result[1]:.3f}\n'
+        adf_text += f'临界值:\n'
+        for key, value in adf_result[4].items():
+            adf_text += f'  {key}: {value:.3f}\n'
+        
+        if adf_result[1] > 0.05:
+            adf_text += '\n结论: 序列非平稳\n(p > 0.05, 不能拒绝原假设)'
+        else:
+            adf_text += '\n结论: 序列平稳\n(p ≤ 0.05, 拒绝原假设)'
+        
+        ax5.text(0.1, 0.9, adf_text, transform=ax5.transAxes, fontsize=10,
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow", alpha=0.8),
+                verticalalignment='top', fontfamily='monospace')
+        
+        # 6. 自相关分析
+        ax6 = axes[1, 2]
+        # 计算自相关
+        from statsmodels.tsa.stattools import acf
+        autocorr = acf(self.visibility, nlags=20, fft=True)
+        lags = np.arange(len(autocorr))
+        
+        ax6.stem(lags, autocorr, linefmt='b-', markerfmt='bo', basefmt='k-')
+        ax6.axhline(y=0, color='black', linestyle='-', alpha=0.5)
+        ax6.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='显著性阈值')
+        ax6.set_xlabel('滞后期')
+        ax6.set_ylabel('自相关系数')
+        ax6.set_title('能见度自相关函数')
+        ax6.legend()
+        ax6.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+
+    def _create_model_performance_comparison(self) -> None:
+        """创建模型性能详细对比图表"""
+        if not self.models:
+            print("⚠️ 没有可用的模型结果")
+            return
+            
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('连续变化数学模型性能对比分析', fontsize=16, fontweight='bold')
+        
+        # 准备数据
+        model_names = []
+        train_r2 = []
+        test_r2 = []
+        train_mae = []
+        test_mae = []
+        train_rmse = []
+        test_rmse = []
+        equations = []
+        
+        for name, model in self.models.items():
+            if model.get('success', False):
+                model_names.append(model['name'])
+                train_r2.append(model.get('r2_train', 0))
+                test_r2.append(model.get('r2_test', model.get('r2', 0)))
+                train_mae.append(model.get('mae_train', 0))
+                test_mae.append(model.get('mae_test', model.get('mae', 0)))
+                train_rmse.append(model.get('rmse_train', 0))
+                test_rmse.append(model.get('rmse_test', model.get('rmse', 0)))
+                equations.append(model.get('equation', 'N/A'))
+        
+        if not model_names:
+            print("⚠️ 没有成功的模型")
+            return
+        
+        # 1. R²得分对比
+        ax1 = axes[0, 0]
+        x = np.arange(len(model_names))
+        width = 0.35
+        
+        bars1 = ax1.bar(x - width/2, train_r2, width, label='训练集', alpha=0.8, color='lightblue')
+        bars2 = ax1.bar(x + width/2, test_r2, width, label='测试集', alpha=0.8, color='lightcoral')
+        
+        ax1.set_xlabel('模型类型')
+        ax1.set_ylabel('R² 得分')
+        ax1.set_title('模型决定系数(R²)对比')
+        ax1.set_xticks(x)
+        ax1.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # 添加数值标签
+        for bar, val in zip(bars1, train_r2):
+            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{val:.3f}', ha='center', va='bottom', fontsize=8)
+        for bar, val in zip(bars2, test_r2):
+            ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01,
+                    f'{val:.3f}', ha='center', va='bottom', fontsize=8)
+        
+        # 2. MAE对比
+        ax2 = axes[0, 1]
+        bars3 = ax2.bar(x - width/2, train_mae, width, label='训练集', alpha=0.8, color='lightgreen')
+        bars4 = ax2.bar(x + width/2, test_mae, width, label='测试集', alpha=0.8, color='orange')
+        
+        ax2.set_xlabel('模型类型')
+        ax2.set_ylabel('平均绝对误差 (m)')
+        ax2.set_title('模型平均绝对误差(MAE)对比')
+        ax2.set_xticks(x)
+        ax2.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # 3. RMSE对比
+        ax3 = axes[0, 2]
+        bars5 = ax3.bar(x - width/2, train_rmse, width, label='训练集', alpha=0.8, color='lightpink')
+        bars6 = ax3.bar(x + width/2, test_rmse, width, label='测试集', alpha=0.8, color='lightyellow')
+        
+        ax3.set_xlabel('模型类型')
+        ax3.set_ylabel('均方根误差 (m)')
+        ax3.set_title('模型均方根误差(RMSE)对比')
+        ax3.set_xticks(x)
+        ax3.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        
+        # 4. 泛化能力分析
+        ax4 = axes[1, 0]
+        generalization_gap = [tr - te for tr, te in zip(train_r2, test_r2)]
+        colors = ['green' if gap < 0.05 else 'orange' if gap < 0.15 else 'red' for gap in generalization_gap]
+        
+        bars7 = ax4.bar(x, generalization_gap, color=colors, alpha=0.7)
+        ax4.set_xlabel('模型类型')
+        ax4.set_ylabel('泛化差距 (训练R² - 测试R²)')
+        ax4.set_title('模型泛化能力分析')
+        ax4.set_xticks(x)
+        ax4.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
+        ax4.axhline(y=0.05, color='orange', linestyle='--', alpha=0.7, label='良好泛化阈值')
+        ax4.axhline(y=0.15, color='red', linestyle='--', alpha=0.7, label='过拟合警戒线')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+        
+        # 5. 综合性能雷达图
+        ax5 = axes[1, 1]
+        if len(model_names) > 0:
+            # 标准化指标到0-1范围
+            norm_test_r2 = [(r2 + 1) / 2 for r2 in test_r2]  # R²可能为负
+            norm_mae = [1 - (mae / max(test_mae)) for mae in test_mae]  # MAE越小越好
+            norm_rmse = [1 - (rmse / max(test_rmse)) for rmse in test_rmse]  # RMSE越小越好
+            norm_gen = [1 - min(gap / 0.3, 1) for gap in generalization_gap]  # 泛化差距越小越好
+            
+            # 创建雷达图数据
+            categories = ['R²得分', 'MAE性能', 'RMSE性能', '泛化能力']
+            N = len(categories)
+            
+            angles = [n / float(N) * 2 * np.pi for n in range(N)]
+            angles += angles[:1]
+            
+            ax5 = plt.subplot(2, 3, 5, projection='polar')
+            
+            for i, name in enumerate(model_names):
+                values = [norm_test_r2[i], norm_mae[i], norm_rmse[i], norm_gen[i]]
+                values += values[:1]
+                
+                ax5.plot(angles, values, 'o-', linewidth=2, label=name[:10])
+                ax5.fill(angles, values, alpha=0.25)
+            
+            ax5.set_xticks(angles[:-1])
+            ax5.set_xticklabels(categories)
+            ax5.set_ylim(0, 1)
+            ax5.set_title('模型综合性能雷达图')
+            ax5.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0))
+        
+        # 6. 模型数学表达式
+        ax6 = axes[1, 2]
+        ax6.axis('off')
+        
+        eq_text = "数学模型方程式\n\n"
+        for i, (name, eq) in enumerate(zip(model_names, equations)):
+            eq_text += f"{i+1}. {name}:\n"
+            eq_text += f"   {eq}\n\n"
+        
+        ax6.text(0.05, 0.95, eq_text, transform=ax6.transAxes, fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8),
+                verticalalignment='top', fontfamily='monospace')
+        
+        plt.tight_layout()
+        plt.show()
+
+    def _create_state_space_detailed_analysis(self) -> None:
+        """创建状态空间模型详细分析图表"""
+        # 找到状态空间模型
+        state_space_model = None
+        for model in self.models.values():
+            if 'state_space' in model.get('name', '').lower() and model.get('success', False):
+                state_space_model = model
+                break
+        
+        if not state_space_model:
+            print("⚠️ 未找到成功的状态空间模型")
+            return
+        
+        fig, axes = plt.subplots(3, 3, figsize=(18, 15))
+        fig.suptitle('状态空间模型详细分析 - 最优连续变化模型', fontsize=16, fontweight='bold')
+        
+        predicted = state_space_model['predicted']
+        residuals = self.visibility - predicted
+        
+        # 1. 模型拟合效果
+        ax1 = axes[0, 0]
+        ax1.plot(self.time_index, self.visibility, 'k-', linewidth=2, label='观测值', alpha=0.8)
+        ax1.plot(self.time_index, predicted, 'r--', linewidth=2, label='模型预测', alpha=0.8)
+        ax1.set_xlabel('时间步长')
+        ax1.set_ylabel('能见度 (m)')
+        ax1.set_title('状态空间模型拟合效果')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # 添加性能指标
+        r2_val = state_space_model.get('r2_test', state_space_model.get('r2', 0))
+        mae_val = state_space_model.get('mae_test', state_space_model.get('mae', 0))
+        rmse_val = state_space_model.get('rmse_test', state_space_model.get('rmse', 0))
+        
+        perf_text = f'性能指标:\nR² = {r2_val:.4f}\nMAE = {mae_val:.2f}m\nRMSE = {rmse_val:.2f}m'
+        ax1.text(0.02, 0.98, perf_text, transform=ax1.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8),
+                verticalalignment='top', fontsize=9)
+        
+        # 2. 残差时间序列
+        ax2 = axes[0, 1]
+        ax2.plot(self.time_index, residuals, 'g-', alpha=0.7, linewidth=1)
+        ax2.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        ax2.set_xlabel('时间步长')
+        ax2.set_ylabel('残差 (m)')
+        ax2.set_title('残差时间序列')
+        ax2.grid(True, alpha=0.3)
+        
+        # 添加残差统计
+        res_stats = f'残差统计:\n均值: {np.mean(residuals):.2f}m\n标准差: {np.std(residuals):.2f}m'
+        ax2.text(0.02, 0.98, res_stats, transform=ax2.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8),
+                verticalalignment='top', fontsize=9)
+        
+        # 3. 残差分布
+        ax3 = axes[0, 2]
+        ax3.hist(residuals, bins=30, density=True, alpha=0.7, color='lightgreen', edgecolor='black')
+        
+        # 拟合正态分布
+        mu_res, sigma_res = stats.norm.fit(residuals)
+        x_res = np.linspace(residuals.min(), residuals.max(), 100)
+        ax3.plot(x_res, stats.norm.pdf(x_res, mu_res, sigma_res), 'r-', linewidth=2,
+                label=f'正态拟合\nμ={mu_res:.1f}, σ={sigma_res:.1f}')
+        ax3.set_xlabel('残差 (m)')
+        ax3.set_ylabel('概率密度')
+        ax3.set_title('残差分布特征')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        
+        # 4. 预测vs观测散点图
+        ax4 = axes[1, 0]
+        ax4.scatter(self.visibility, predicted, alpha=0.6, color='blue', s=20)
+        min_val = min(self.visibility.min(), predicted.min())
+        max_val = max(self.visibility.max(), predicted.max())
+        ax4.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='完美预测线')
+        ax4.set_xlabel('观测值 (m)')
+        ax4.set_ylabel('预测值 (m)')
+        ax4.set_title(f'预测精度分析\nR² = {r2_val:.4f}')
+        ax4.legend()
+        ax4.grid(True, alpha=0.3)
+        
+        # 5. 残差vs预测值
+        ax5 = axes[1, 1]
+        ax5.scatter(predicted, residuals, alpha=0.6, color='green', s=20)
+        ax5.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        ax5.set_xlabel('预测值 (m)')
+        ax5.set_ylabel('残差 (m)')
+        ax5.set_title('残差vs预测值')
+        ax5.grid(True, alpha=0.3)
+        
+        # 6. Q-Q图
+        ax6 = axes[1, 2]
+        stats.probplot(residuals, dist="norm", plot=ax6)
+        ax6.set_title('残差正态Q-Q图')
+        ax6.grid(True, alpha=0.3)
+        
+        # 7. 状态演化方程可视化
+        ax7 = axes[2, 0]
+        ax7.axis('off')
+        
+        # 状态空间模型方程
+        eq_text = "状态空间模型数学表达式\n\n"
+        eq_text += "状态方程:\n"
+        eq_text += "x[k+1] = F·x[k] + w[k]\n\n"
+        eq_text += "其中:\n"
+        eq_text += "x[k] = [V[k], V'[k], V''[k]]ᵀ\n\n"
+        eq_text += "状态转移矩阵 F:\n"
+        eq_text += "F = [1.0  1.0  0.5]\n"
+        eq_text += "    [0.0  1.0  1.0]\n"
+        eq_text += "    [0.0  0.0  1.0]\n\n"
+        eq_text += "观测方程:\n"
+        eq_text += "y[k] = H·x[k] + v[k]\n"
+        eq_text += "H = [1.0, 0.0, 0.0]\n\n"
+        eq_text += "核心演化方程:\n"
+        eq_text += "V[k+1] = V[k] + V'[k] + 0.5·V''[k]"
+        
+        ax7.text(0.05, 0.95, eq_text, transform=ax7.transAxes, fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow", alpha=0.8),
+                verticalalignment='top', fontfamily='monospace')
+        
+        # 8. 卡尔曼滤波过程
+        ax8 = axes[2, 1]
+        if 'kalman_states' in state_space_model:
+            states = state_space_model['kalman_states']
+            velocities = states[:, 1] if states.shape[1] > 1 else np.gradient(predicted)
+            accelerations = states[:, 2] if states.shape[1] > 2 else np.gradient(velocities)
+        else:
+            velocities = np.gradient(predicted)
+            accelerations = np.gradient(velocities)
+        
+        ax8.plot(self.time_index, velocities, 'b-', linewidth=2, label="速度 (dV/dt)")
+        ax8_twin = ax8.twinx()
+        ax8_twin.plot(self.time_index, accelerations, 'r-', linewidth=2, label="加速度 (d²V/dt²)")
+        
+        ax8.set_xlabel('时间步长')
+        ax8.set_ylabel('速度 (m/步)', color='blue')
+        ax8_twin.set_ylabel('加速度 (m/步²)', color='red')
+        ax8.set_title('状态演化过程分析')
+        ax8.grid(True, alpha=0.3)
+        
+        # 添加图例
+        lines1, labels1 = ax8.get_legend_handles_labels()
+        lines2, labels2 = ax8_twin.get_legend_handles_labels()
+        ax8.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
+        
+        # 9. 模型参数和不确定性
+        ax9 = axes[2, 2]
+        ax9.axis('off')
+        
+        param_text = "模型参数配置\n\n"
+        param_text += "过程噪声协方差矩阵 Q:\n"
+        param_text += "Q = diag(25, 100, 100)\n\n"
+        param_text += "观测噪声方差 R:\n"
+        param_text += "R = 50.0\n\n"
+        param_text += "不确定性分析:\n"
+        param_text += f"• 过程不确定性: ±{np.sqrt(25):.1f}m\n"
+        param_text += f"• 观测不确定性: ±{np.sqrt(50):.1f}m\n"
+        param_text += f"• 预测RMSE: {rmse_val:.1f}m\n\n"
+        param_text += "物理解释:\n"
+        param_text += "• V: 能见度当前状态\n"
+        param_text += "• V': 能见度变化速率\n"
+        param_text += "• V'': 能见度变化加速度"
+        
+        ax9.text(0.05, 0.95, param_text, transform=ax9.transAxes, fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightcyan", alpha=0.8),
+                verticalalignment='top', fontfamily='monospace')
+        
+        plt.tight_layout()
+        plt.show()
+
+    def _create_continuous_dynamics_analysis(self) -> None:
+        """创建连续变化动力学分析图表"""
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('能见度连续变化动力学分析', fontsize=16, fontweight='bold')
+        
+        # 获取最佳模型的预测结果
+        best_model = self._get_best_model()
+        if not best_model:
+            print("⚠️ 没有可用的最佳模型")
+            return
+        
+        predicted = best_model['predicted']
+        
+        # 计算各阶导数
+        first_derivative = np.gradient(self.visibility)
+        second_derivative = np.gradient(first_derivative)
+        pred_first_derivative = np.gradient(predicted)
+        pred_second_derivative = np.gradient(pred_first_derivative)
+        
+        # 1. 能见度变化速率分析
+        ax1 = axes[0, 0]
+        ax1.plot(self.time_index, first_derivative, 'b-', linewidth=2, alpha=0.7, label='观测数据')
+        ax1.plot(self.time_index, pred_first_derivative, 'r--', linewidth=2, alpha=0.8, label='模型预测')
+        ax1.axhline(y=0, color='black', linestyle=':', alpha=0.5)
+        ax1.set_xlabel('时间步长')
+        ax1.set_ylabel('变化速率 (m/步)')
+        ax1.set_title('能见度变化速率 (dV/dt)')
+        ax1.legend()
+        ax1.grid(True, alpha=0.3)
+        
+        # 2. 能见度变化加速度分析
+        ax2 = axes[0, 1]
+        ax2.plot(self.time_index, second_derivative, 'g-', linewidth=2, alpha=0.7, label='观测数据')
+        ax2.plot(self.time_index, pred_second_derivative, 'orange', linestyle='--', linewidth=2, alpha=0.8, label='模型预测')
+        ax2.axhline(y=0, color='black', linestyle=':', alpha=0.5)
+        ax2.set_xlabel('时间步长')
+        ax2.set_ylabel('变化加速度 (m/步²)')
+        ax2.set_title('能见度变化加速度 (d²V/dt²)')
+        ax2.legend()
+        ax2.grid(True, alpha=0.3)
+        
+        # 3. 相空间图 (V vs dV/dt)
+        ax3 = axes[0, 2]
+        ax3.scatter(self.visibility, first_derivative, c=self.time_index, cmap='viridis', 
+                   alpha=0.6, s=20, label='观测数据')
+        ax3.plot(predicted, pred_first_derivative, 'r-', linewidth=2, alpha=0.8, label='模型轨迹')
+        ax3.set_xlabel('能见度 (m)')
+        ax3.set_ylabel('变化速率 (m/步)')
+        ax3.set_title('相空间图 (能见度 vs 变化速率)')
+        ax3.legend()
+        ax3.grid(True, alpha=0.3)
+        
+        # 添加颜色条
+        cb = plt.colorbar(ax3.collections[0], ax=ax3)
+        cb.set_label('时间步长')
+        
+        # 4. 动力学特征统计
+        ax4 = axes[1, 0]
+        
+        # 计算动力学特征
+        velocity_ranges = ['减速(<-100)', '缓减(-100,-10)', '稳定(-10,10)', '缓增(10,100)', '加速(>100)']
+        velocity_counts = [
+            np.sum(first_derivative < -100),
+            np.sum((first_derivative >= -100) & (first_derivative < -10)),
+            np.sum((first_derivative >= -10) & (first_derivative <= 10)),
+            np.sum((first_derivative > 10) & (first_derivative <= 100)),
+            np.sum(first_derivative > 100)
+        ]
+        
+        colors = ['red', 'orange', 'yellow', 'lightgreen', 'green']
+        bars = ax4.bar(velocity_ranges, velocity_counts, color=colors, alpha=0.7)
+        ax4.set_xlabel('变化速率区间 (m/步)')
+        ax4.set_ylabel('时间步数')
+        ax4.set_title('能见度变化速率分布统计')
+        ax4.tick_params(axis='x', rotation=45)
+        ax4.grid(True, alpha=0.3)
+        
+        # 添加百分比标签
+        total_points = len(first_derivative)
+        for bar, count in zip(bars, velocity_counts):
+            percentage = count / total_points * 100
+            ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
+                    f'{percentage:.1f}%', ha='center', va='bottom', fontsize=8)
+        
+        # 5. 连续变化过程分类
+        ax5 = axes[1, 1]
+        
+        # 定义过程类型
+        stable_mask = np.abs(first_derivative) <= 10
+        improving_mask = first_derivative > 10
+        degrading_mask = first_derivative < -10
+        
+        # 绘制不同类型的过程
+        ax5.scatter(self.time_index[stable_mask], self.visibility[stable_mask], 
+                   c='yellow', alpha=0.7, s=15, label=f'稳定过程 ({np.sum(stable_mask)}点)')
+        ax5.scatter(self.time_index[improving_mask], self.visibility[improving_mask], 
+                   c='green', alpha=0.7, s=15, label=f'改善过程 ({np.sum(improving_mask)}点)')
+        ax5.scatter(self.time_index[degrading_mask], self.visibility[degrading_mask], 
+                   c='red', alpha=0.7, s=15, label=f'恶化过程 ({np.sum(degrading_mask)}点)')
+        
+        ax5.set_xlabel('时间步长')
+        ax5.set_ylabel('能见度 (m)')
+        ax5.set_title('能见度变化过程分类')
+        ax5.legend()
+        ax5.grid(True, alpha=0.3)
+        
+        # 6. 动力学方程总结
+        ax6 = axes[1, 2]
+        ax6.axis('off')
+        
+        # 统计信息
+        stats_text = "连续变化动力学总结\n\n"
+        stats_text += f"数据基本统计:\n"
+        stats_text += f"• 观测点数: {len(self.visibility)}\n"
+        stats_text += f"• 时间跨度: {len(self.visibility)-1} 步\n\n"
+        
+        stats_text += f"变化速率统计:\n"
+        stats_text += f"• 平均速率: {np.mean(first_derivative):.2f} m/步\n"
+        stats_text += f"• 速率标准差: {np.std(first_derivative):.2f} m/步\n"
+        stats_text += f"• 最大增速: {np.max(first_derivative):.1f} m/步\n"
+        stats_text += f"• 最大减速: {np.min(first_derivative):.1f} m/步\n\n"
+        
+        stats_text += f"过程分布:\n"
+        stats_text += f"• 稳定过程: {np.sum(stable_mask)/len(first_derivative)*100:.1f}%\n"
+        stats_text += f"• 改善过程: {np.sum(improving_mask)/len(first_derivative)*100:.1f}%\n"
+        stats_text += f"• 恶化过程: {np.sum(degrading_mask)/len(first_derivative)*100:.1f}%\n\n"
+        
+        stats_text += f"最优模型:\n"
+        stats_text += f"• 模型类型: {best_model['name']}\n"
+        stats_text += f"• R² 得分: {best_model.get('r2_test', best_model.get('r2', 0)):.4f}\n"
+        stats_text += f"• 预测精度: ±{best_model.get('rmse_test', best_model.get('rmse', 0)):.1f}m"
+        
+        ax6.text(0.05, 0.95, stats_text, transform=ax6.transAxes, fontsize=9,
+                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightsteelblue", alpha=0.8),
+                verticalalignment='top', fontfamily='monospace')
+        
+        plt.tight_layout()
+        plt.show()
+
+    def create_model_performance_table(self) -> None:
+        """创建模型性能对比表格用于论文"""
+        if not self.models:
+            print("⚠️ 没有可用的模型结果")
+            return
+        
+        # 准备表格数据
+        table_data = []
+        for name, model in self.models.items():
+            if model.get('success', False):
+                # 计算泛化差距
+                train_r2 = model.get('r2_train', 0)
+                test_r2 = model.get('r2_test', model.get('r2', 0))
+                generalization_gap = train_r2 - test_r2
+                
+                # 确定泛化能力评估
+                if generalization_gap < 0.05:
+                    generalization_status = "优秀泛化"
+                elif generalization_gap < 0.15:
+                    generalization_status = "良好泛化"
+                else:
+                    generalization_status = "过拟合风险"
+                
+                table_data.append({
+                    '模型类型': model['name'],
+                    '训练集R²': f"{train_r2:.6f}",
+                    '测试集R²': f"{test_r2:.6f}",
+                    '训练集MAE(m)': f"{model.get('mae_train', 0):.2f}",
+                    '测试集MAE(m)': f"{model.get('mae_test', model.get('mae', 0)):.2f}",
+                    '训练集RMSE(m)': f"{model.get('rmse_train', 0):.2f}",
+                    '测试集RMSE(m)': f"{model.get('rmse_test', model.get('rmse', 0)):.2f}",
+                    '泛化差距': f"{generalization_gap:.4f}",
+                    '泛化能力评估': generalization_status,
+                    '数学方程': model.get('equation', 'N/A')
+                })
+        
+        # 创建表格图
+        fig, ax = plt.subplots(figsize=(20, 8))
+        ax.axis('tight')
+        ax.axis('off')
+        
+        if table_data:
+            # 创建DataFrame
+            import pandas as pd
+            df = pd.DataFrame(table_data)
+            
+            # 创建表格
+            table = ax.table(cellText=df.values,
+                           colLabels=df.columns,
+                           cellLoc='center',
+                           loc='center')
+            
+            # 设置表格样式
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1.2, 2)
+            
+            # 设置表头样式
+            for i in range(len(df.columns)):
+                table[(0, i)].set_facecolor('#4472C4')
+                table[(0, i)].set_text_props(weight='bold', color='white')
+            
+            # 设置数据行样式
+            for i in range(1, len(df) + 1):
+                for j in range(len(df.columns)):
+                    if i % 2 == 0:
+                        table[(i, j)].set_facecolor('#F2F2F2')
+                    else:
+                        table[(i, j)].set_facecolor('white')
+                    
+                    # 突出显示最佳性能
+                    if j == 2:  # 测试集R²列
+                        r2_val = float(df.iloc[i-1, j])
+                        if r2_val > 0.9:
+                            table[(i, j)].set_facecolor('#90EE90')  # 浅绿色
+                    
+                    elif j == 8:  # 泛化能力评估列
+                        status = df.iloc[i-1, j]
+                        if status == "优秀泛化":
+                            table[(i, j)].set_facecolor('#90EE90')  # 浅绿色
+                        elif status == "良好泛化":
+                            table[(i, j)].set_facecolor('#FFD700')  # 金色
+                        else:
+                            table[(i, j)].set_facecolor('#FFB6C1')  # 浅粉色
+        
+        plt.title('问题二：连续变化数学模型性能对比表', fontsize=16, fontweight='bold', pad=20)
+        plt.tight_layout()
+        plt.show()
+        
+        # 同时打印表格数据（用于论文复制）
+        print("\n" + "="*120)
+        print("📊 模型性能对比表格数据（用于论文）")
+        print("="*120)
+        
+        if table_data:
+            df = pd.DataFrame(table_data)
+            print(df.to_string(index=False))
+        
+        print("\n📈 性能分析总结:")
+        print(f"• 共构建 {len(table_data)} 个连续变化数学模型")
+        
+        if table_data:
+            # 找出最佳模型
+            best_idx = 0
+            best_r2 = -999
+            for i, row in enumerate(table_data):
+                test_r2 = float(row['测试集R²'])
+                if test_r2 > best_r2:
+                    best_r2 = test_r2
+                    best_idx = i
+            
+            best_model_data = table_data[best_idx]
+            print(f"• 最优模型: {best_model_data['模型类型']}")
+            print(f"• 最高测试集R²: {best_model_data['测试集R²']}")
+            print(f"• 最优模型泛化能力: {best_model_data['泛化能力评估']}")
+            print(f"• 最优模型RMSE: {best_model_data['测试集RMSE(m)']}m")
 
 
 def main():
