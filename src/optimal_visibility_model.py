@@ -1277,9 +1277,9 @@ class ContinuousVisibilityModel:
             print(f"\n🏆 最佳连续数学模型（基于测试集性能）:")
             print(f"   • 模型名称: {best_model['name']}")
             print(f"   • 数学表达式: {best_model.get('equation', 'N/A')}")
-            print(f"   • 训练集性能: R² = {best_model.get('r2_train', 0):.8f}")
-            print(f"   • 测试集性能: R² = {test_r2:.8f}")
-            print(f"   • 测试集预测误差: MAE = {best_model.get('mae_test', best_model.get('mae', 0)):.2f}m, RMSE = {best_model.get('rmse_test', best_model.get('rmse', 0)):.2f}m")
+            print(f"   训练集性能: R² = {best_model.get('r2_train', 0):.8f}")
+            print(f"   测试集性能: R² = {test_r2:.8f}")
+            print(f"   测试集预测误差: MAE = {best_model.get('mae_test', best_model.get('mae', 0)):.2f}m, RMSE = {best_model.get('rmse_test', best_model.get('rmse', 0)):.2f}m")
             
             # 模型物理意义解释
             print(f"\n🔬 物理意义解释:")
@@ -1289,6 +1289,12 @@ class ContinuousVisibilityModel:
                 print(f"   • 自然消散过程")
                 print(f"   • 非线性饱和效应")
                 print(f"   • 随机扰动影响")
+            elif 'state_space' in best_model.get('name', ''):
+                print(f"   该模型基于状态空间理论，考虑了:")
+                print(f"   • 能见度的连续演化过程")
+                print(f"   • 一阶导数（变化率）和二阶导数（加速度）")
+                print(f"   • 系统噪声和观测噪声")
+                print(f"   • 卡尔曼滤波最优估计")
             
             # 模型质量评估（基于测试集）
             if test_r2 > 0.9:
@@ -1316,7 +1322,7 @@ class ContinuousVisibilityModel:
         print(f"\n📋 研究结论:")
         print(f"   1. 成功建立了能见度随时间连续变化的数学模型")
         print(f"   2. 通过训练集/测试集分割验证了模型的泛化能力")
-        print(f"   3. 微分方程模型能有效刻画雾的物理演化过程")
+        print(f"   3. 数学模型能有效刻画能见度的演化过程")
         print(f"   4. 气象要素对能见度变化具有显著影响")
         print(f"   5. 连续模型能为雾预报提供理论基础")
         
@@ -1449,15 +1455,15 @@ class ContinuousVisibilityModel:
         print(f"📊 测试集性能: R² = {best_model.get('r2_test', best_model.get('r2', 0)):.8f}")
         
         if 'state_space' in best_model.get('name', '').lower():
-            self._extract_state_space_parameters(best_model)
+            self._extract_state_space_parameters_detailed(best_model)
         elif 'differential_equation' in best_model.get('name', '').lower():
-            self._extract_differential_equation_parameters(best_model)
+            self._extract_differential_equation_parameters_detailed(best_model)
         elif 'nonlinear' in best_model.get('name', '').lower():
-            self._extract_nonlinear_parameters(best_model)
+            self._extract_nonlinear_parameters_detailed(best_model)
         elif 'ensemble' in best_model.get('name', '').lower():
-            self._extract_ensemble_parameters(best_model)
+            self._extract_ensemble_parameters_detailed(best_model)
     
-    def _extract_state_space_parameters(self, model: Dict[str, Any]) -> None:
+    def _extract_state_space_parameters_detailed(self, model: Dict[str, Any]) -> None:
         """提取状态空间模型的具体参数"""
         print(f"\n🎯 状态空间模型详细参数:")
         
@@ -1478,7 +1484,7 @@ class ContinuousVisibilityModel:
         print(f"\n📋 观测矩阵 H (1×3):")
         print(f"   H = [{H[0,0]:.1f}, {H[0,1]:.1f}, {H[0,2]:.1f}]")
         
-        # 过程噪声协方差矩阵 Q (主对角线)
+        # 过程噪声协方差矩阵 Q
         Q = kf.Q
         print(f"\n📋 过程噪声协方差矩阵 Q (对角线元素):")
         print(f"   Q_diag = [{Q[0,0]:.1f}, {Q[1,1]:.1f}, {Q[2,2]:.1f}]")
@@ -1498,14 +1504,54 @@ class ContinuousVisibilityModel:
         print(f"   ")
         print(f"   其中: w[k] ~ N(0, diag({Q[0,0]:.0f}, {Q[1,1]:.0f}, {Q[2,2]:.0f})), v[k] ~ N(0, {R[0,0]:.0f})")
         
+        # 展开的多项式表达式
+        print(f"\n📐 展开的多项式表达式:")
+        print(f"   状态演化方程:")
+        print(f"   V[k+1] = {F[0,0]:.1f}×V[k] + {F[0,1]:.1f}×V'[k] + {F[0,2]:.1f}×V''[k] + w1[k]")
+        print(f"   V'[k+1] = {F[1,0]:.1f}×V[k] + {F[1,1]:.1f}×V'[k] + {F[1,2]:.1f}×V''[k] + w2[k]")
+        print(f"   V''[k+1] = {F[2,0]:.1f}×V[k] + {F[2,1]:.1f}×V'[k] + {F[2,2]:.1f}×V''[k] + w3[k]")
+        print(f"   ")
+        print(f"   简化形式:")
+        print(f"   V[k+1] = V[k] + V'[k] + 0.5×V''[k] + w1[k]")
+        print(f"   V'[k+1] = V'[k] + V''[k] + w2[k]")
+        print(f"   V''[k+1] = V''[k] + w3[k]")
+        print(f"   ")
+        print(f"   观测方程:")
+        print(f"   y[k] = {H[0,0]:.1f}×V[k] + {H[0,1]:.1f}×V'[k] + {H[0,2]:.1f}×V''[k] + v[k]")
+        print(f"   y[k] = V[k] + v[k]  (只观测能见度本身)")
+        
+        # 递推展开表达式
+        print(f"\n🔄 递推展开表达式 (前3步):")
+        print(f"   V[k+1] = V[k] + V'[k] + 0.5×V''[k] + w1[k]")
+        print(f"   V[k+2] = V[k+1] + V'[k+1] + 0.5×V''[k+1]")
+        print(f"          = V[k] + V'[k] + 0.5×V''[k] + (V'[k] + V''[k]) + 0.5×V''[k] + 噪声项")
+        print(f"          = V[k] + 2×V'[k] + 2×V''[k] + 噪声项")
+        print(f"   V[k+3] = V[k] + 3×V'[k] + 4.5×V''[k] + 噪声项")
+        
         # 物理意义
         print(f"\n🌍 物理解释:")
-        print(f"   • 能见度演化: V[k+1] = V[k] + V'[k] + 0.5×V''[k]")
-        print(f"   • 变化率演化: V'[k+1] = V'[k] + V''[k]") 
+        print(f"   • 能见度演化: V[k+1] = V[k] + V'[k] + 0.5×V''[k] (运动学方程)")
+        print(f"   • 变化率演化: V'[k+1] = V'[k] + V''[k] (速度积分)")
         print(f"   • 加速度演化: V''[k+1] = V''[k] (随机游走)")
         print(f"   • 只观测能见度本身，变化率和加速度为隐状态")
+        
+        # 性能指标
+        print(f"\n📊 模型性能:")
+        print(f"   • 训练集: R² = {model.get('r2_train', 0):.6f}")
+        print(f"   • 测试集: R² = {model.get('r2_test', 0):.6f}")
+        print(f"   • 测试集MAE: {model.get('mae_test', 0):.2f}m")
+        print(f"   • 测试集RMSE: {model.get('rmse_test', 0):.2f}m")
+        
+        # 应用公式
+        print(f"\n🎯 实际应用公式:")
+        print(f"   给定当前状态 [V[k], V'[k], V''[k]]，预测下一时刻能见度：")
+        print(f"   V[k+1] = V[k] + V'[k] + 0.5×V''[k] ± {np.sqrt(Q[0,0]):.1f}m")
+        print(f"   ")
+        print(f"   预测不确定性:")
+        print(f"   • 过程不确定性: ±{np.sqrt(Q[0,0]):.1f}m (能见度)")
+        print(f"   • 观测不确定性: ±{np.sqrt(R[0,0]):.1f}m (测量误差)")
     
-    def _extract_differential_equation_parameters(self, model: Dict[str, Any]) -> None:
+    def _extract_differential_equation_parameters_detailed(self, model: Dict[str, Any]) -> None:
         """提取微分方程模型的具体参数"""
         print(f"\n🎯 微分方程模型详细参数:")
         
@@ -1525,6 +1571,9 @@ class ContinuousVisibilityModel:
         print(f"\n🔬 完整微分方程:")
         print(f"   dV/dt = α·f(T,RH,WS) - β·V(t) - δ·V²/(ε+V) + γ·ξ(t)")
         print(f"   ")
+        print(f"   具体参数代入:")
+        print(f"   dV/dt = {alpha:.6f}×f(T,RH,WS) - {beta:.6f}×V(t) - {delta:.6f}×V²/({epsilon:.1f}+V) + {gamma:.6f}×ξ(t)")
+        print(f"   ")
         print(f"   其中:")
         print(f"   α = {alpha:.6f}  (气象驱动强度)")
         print(f"   β = {beta:.6f}  (自然消散系数)")
@@ -1534,8 +1583,15 @@ class ContinuousVisibilityModel:
         print(f"   ")
         print(f"   气象驱动函数:")
         print(f"   f(T,RH,WS) = 0.4×(RH-70)/30 + 0.3×(15-T)/15 + 0.3×(3-WS)/3")
+        
+        # 多项式展开
+        print(f"\n📐 在平衡点附近的线性化多项式:")
+        V_eq = 2000  # 假设平衡点能见度
+        print(f"   假设在V={V_eq}m附近:")
+        linear_coeff = -beta - 2*delta*V_eq/(epsilon + V_eq)**2
+        print(f"   dV/dt ≈ {alpha:.6f}×f(T,RH,WS) + {linear_coeff:.6f}×(V-{V_eq}) + {gamma:.6f}×ξ(t)")
     
-    def _extract_nonlinear_parameters(self, model: Dict[str, Any]) -> None:
+    def _extract_nonlinear_parameters_detailed(self, model: Dict[str, Any]) -> None:
         """提取非线性动力学模型的具体参数"""
         print(f"\n🎯 非线性动力学模型详细参数:")
         
@@ -1550,17 +1606,28 @@ class ContinuousVisibilityModel:
         
         print(f"\n📋 Logistic增长参数:")
         print(f"   r = {r:.6f}  (内在增长率)")
-        print(f"   K = {K:.2f}  (环境容量/最大能见度)")
+        print(f"   K = {K:.2f}m  (环境容量/最大能见度)")
         
         print(f"\n📋 气象影响系数:")
+        weather_names = ['温度', '湿度', '露点', '风速']
         for i, beta in enumerate(betas):
-            print(f"   β{i+1} = {beta:.6f}")
+            name = weather_names[i] if i < len(weather_names) else f'特征{i+1}'
+            print(f"   β{i+1}({name}) = {beta:.6f}")
         
         print(f"\n🔬 完整微分方程:")
         print(f"   dV/dt = r·V·(1 - V/K) + Σβᵢ·Xᵢ(t)")
-        print(f"   dV/dt = {r:.6f}·V·(1 - V/{K:.2f}) + Σβᵢ·Xᵢ(t)")
+        print(f"   ")
+        print(f"   具体参数代入:")
+        print(f"   dV/dt = {r:.6f}×V×(1 - V/{K:.2f}) + Σβᵢ·Xᵢ(t)")
+        
+        # 多项式展开
+        print(f"\n📐 多项式展开:")
+        print(f"   dV/dt = {r:.6f}×V - {r/K:.8f}×V² + Σβᵢ·Xᵢ(t)")
+        print(f"   ")
+        print(f"   一次项系数: {r:.6f}")
+        print(f"   二次项系数: -{r/K:.8f}")
     
-    def _extract_ensemble_parameters(self, model: Dict[str, Any]) -> None:
+    def _extract_ensemble_parameters_detailed(self, model: Dict[str, Any]) -> None:
         """提取集成模型的具体参数"""
         print(f"\n🎯 集成模型详细参数:")
         
@@ -1576,16 +1643,16 @@ class ContinuousVisibilityModel:
         print(f"\n🔬 集成预测公式:")
         print(f"   V_ensemble(t) = Σ wᵢ × Vᵢ(t)")
         print(f"   ")
-        print(f"   其中:")
+        print(f"   具体展开:")
         for model_name, weight in weights.items():
-            print(f"   • w_{model_name} = {weight:.6f}")
+            print(f"   + {weight:.6f} × V_{model_name}(t)")
+        print(f"   = V_ensemble(t)")
         
         # 如果主要是状态空间模型，显示其详细参数
         if 'state_space' in weights and weights['state_space'] > 0.5:
-            print(f"\n   由于集成模型主要基于状态空间模型，其详细参数如下：")
-            # 获取状态空间模型
+            print(f"\n💡 由于集成模型主要基于状态空间模型，其详细参数如下：")
             if hasattr(self, 'models') and 'state_space' in self.models:
-                self._extract_state_space_parameters(self.models['state_space'])
+                self._extract_state_space_parameters_detailed(self.models['state_space'])
 
 
 def main():
@@ -1601,6 +1668,7 @@ def main():
     print("• 📈 丰富的可视化分析（15+专业图表）")
     print("• 🔮 连续预测与不确定性分析")
     print("• 📋 详细的数学建模报告")
+    print("• 🔍 具体数学表达式和参数提取")
     print("="*80)
     
     # 创建模型实例
@@ -1646,6 +1714,10 @@ def main():
                 print(f"   其中 V(t) 表示 t 时刻的能见度值")
                 print(f"   模型拟合精度: R² = {best_model['r2']:.8f}")
                 print(f"   预测准确度: ±{best_model['rmse']:.1f}m")
+                
+                print('\n' + '='*80)
+                print('✅ 模型构建和参数提取完成！这就是您要的带有具体权重的数学表达式')
+                print('='*80)
         
         else:
             print("⚠️ 分析未完全完成，请检查数据文件")
@@ -1661,4 +1733,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main() 
+    main()
