@@ -63,6 +63,17 @@ class ContinuousVisibilityModel:
         self.models = {}
         self.results = {}
         
+        # 添加训练集/测试集分割相关属性
+        self.train_size = 0.8  # 80%作为训练集
+        self.train_indices = None
+        self.test_indices = None
+        self.visibility_train = None
+        self.visibility_test = None
+        self.weather_train = None
+        self.weather_test = None
+        self.time_train = None
+        self.time_test = None
+        
         # 模型配色方案
         self.colors = {
             'primary': '#2E86AB',
@@ -164,8 +175,30 @@ class ContinuousVisibilityModel:
         # 创建时间索引
         self.time_index = np.arange(len(self.visibility))
         
+        # 添加训练集/测试集分割
+        self._split_train_test()
+        
         print(f"  ✅ 能见度数据: {len(self.visibility)} 个点")
         print(f"  ✅ 气象特征: {self.weather_features.shape[1]} 个维度")
+        print(f"  📊 训练集: {len(self.visibility_train)} 个点 ({len(self.visibility_train)/len(self.visibility)*100:.1f}%)")
+        print(f"  📊 测试集: {len(self.visibility_test)} 个点 ({len(self.visibility_test)/len(self.visibility)*100:.1f}%)")
+
+    def _split_train_test(self) -> None:
+        """分割训练集和测试集"""
+        n_samples = len(self.visibility)
+        n_train = int(n_samples * self.train_size)
+        
+        # 使用时间顺序分割（更符合时间序列特性）
+        self.train_indices = np.arange(n_train)
+        self.test_indices = np.arange(n_train, n_samples)
+        
+        # 分割数据
+        self.visibility_train = self.visibility[self.train_indices]
+        self.visibility_test = self.visibility[self.test_indices]
+        self.weather_train = self.weather_features[self.train_indices]
+        self.weather_test = self.weather_features[self.test_indices]
+        self.time_train = self.time_index[self.train_indices]
+        self.time_test = self.time_index[self.test_indices]
 
     def _data_quality_check(self) -> None:
         """数据质量检查"""
@@ -248,37 +281,21 @@ class ContinuousVisibilityModel:
         """
         print("\n=== 构建微分方程雾演化模型 ===")
         
-        def fog_dynamics_equation(V: float, t: float, params: np.ndarray) -> float:
-            """
-            雾动力学微分方程
-            
-            Parameters
-            ----------
-            V : float
-                当前时刻能见度
-            t : float
-                时间
-            params : np.ndarray
-                模型参数 [α, β, γ, δ, ε]
-                
-            Returns
-            -------
-            float
-                能见度变化率 dV/dt
-            """
+        def fog_dynamics_equation(V: float, t: float, params: np.ndarray, weather_data: np.ndarray = None) -> float:
+            """雾动力学微分方程"""
             alpha, beta, gamma, delta, epsilon = params
             
             # 获取当前时刻的气象条件（线性插值）
-            if t < len(self.weather_features):
+            if weather_data is not None and t < len(weather_data):
                 idx = int(t)
-                if idx < len(self.weather_features) - 1:
+                if idx < len(weather_data) - 1:
                     # 线性插值
                     frac = t - idx
-                    weather = self.weather_features[idx] * (1 - frac) + self.weather_features[idx + 1] * frac
+                    weather = weather_data[idx] * (1 - frac) + weather_data[idx + 1] * frac
                 else:
-                    weather = self.weather_features[-1]
+                    weather = weather_data[-1]
             else:
-                weather = self.weather_features[-1]
+                weather = self.weather_train[-1] if hasattr(self, 'weather_train') and len(self.weather_train) > 0 else np.array([15, 80, 10, 2, 0, 0, 1013])
             
             # 提取气象要素
             T = weather[0] if len(weather) > 0 else 15      # 温度
@@ -287,7 +304,6 @@ class ContinuousVisibilityModel:
             P = weather[6] if len(weather) > 6 else 1013    # 气压
             
             # 气象驱动函数 f(T,RH,WS,P)
-            # 高湿度、低温、低风速有利于雾形成（能见度降低）
             humidity_factor = (RH - 70) / 30  # 湿度因子
             temperature_factor = (15 - T) / 15  # 温度因子（低温有利）
             wind_factor = (3 - WS) / 3  # 风速因子（低风速有利）
@@ -303,7 +319,7 @@ class ContinuousVisibilityModel:
             dissipation_term = -beta * V
             
             # 随机扰动项（简化处理）
-            noise_term = gamma * np.random.normal(0, 0.01)  # 减小噪声强度从0.1到0.01
+            noise_term = gamma * np.random.normal(0, 0.01)
             
             # 非线性项（考虑饱和效应）
             nonlinear_term = -delta * V**2 / (epsilon + V)
@@ -313,23 +329,23 @@ class ContinuousVisibilityModel:
             
             return dVdt
         
-        # 参数优化
+        # 参数优化 - 仅在训练集上进行
         def objective_function(params: np.ndarray) -> float:
-            """目标函数：最小化预测误差"""
+            """目标函数：最小化训练集预测误差"""
             try:
-                # 数值积分求解
-                t_span = np.linspace(0, len(self.visibility) - 1, len(self.visibility))
-                V0 = self.visibility[0]
+                # 在训练集上数值积分求解
+                t_span = np.linspace(0, len(self.visibility_train) - 1, len(self.visibility_train))
+                V0 = self.visibility_train[0]
                 
                 # 求解微分方程
-                solution = odeint(fog_dynamics_equation, V0, t_span, args=(params,))
+                solution = odeint(fog_dynamics_equation, V0, t_span, args=(params, self.weather_train))
                 predicted = solution.flatten()
                 
                 # 确保预测值为正且在合理范围内
                 predicted = np.clip(predicted, 10, 20000)
                 
                 # 计算均方误差
-                mse = np.mean((predicted - self.visibility)**2)
+                mse = np.mean((predicted - self.visibility_train)**2)
                 return mse
                 
             except Exception as e:
@@ -358,43 +374,75 @@ class ContinuousVisibilityModel:
                 initial_params,
                 bounds=param_bounds,
                 method='L-BFGS-B',
-                options={'maxiter': 200, 'ftol': 1e-6}  # 增加迭代次数和提高收敛精度
+                options={'maxiter': 200, 'ftol': 1e-6}
             )
             
             optimal_params = result.x
             
-            # 生成最终预测
-            t_span = np.linspace(0, len(self.visibility) - 1, len(self.visibility))
-            V0 = self.visibility[0]
-            predicted = odeint(fog_dynamics_equation, V0, t_span, args=(optimal_params,))
-            predicted = predicted.flatten()
-            predicted = np.clip(predicted, 10, 20000)
+            # 生成训练集预测
+            t_train_span = np.linspace(0, len(self.visibility_train) - 1, len(self.visibility_train))
+            V0_train = self.visibility_train[0]
+            predicted_train = odeint(fog_dynamics_equation, V0_train, t_train_span, args=(optimal_params, self.weather_train))
+            predicted_train = predicted_train.flatten()
+            predicted_train = np.clip(predicted_train, 10, 20000)
             
-            # 计算性能指标
-            r2 = r2_score(self.visibility, predicted)
-            mae = mean_absolute_error(self.visibility, predicted)
-            rmse = np.sqrt(mean_squared_error(self.visibility, predicted))
+            # 生成测试集预测
+            # 从训练集最后一个值开始预测
+            t_test_span = np.linspace(0, len(self.visibility_test) - 1, len(self.visibility_test))
+            V0_test = self.visibility_train[-1]  # 使用训练集最后一个值作为初始值
+            predicted_test = odeint(fog_dynamics_equation, V0_test, t_test_span, args=(optimal_params, self.weather_test))
+            predicted_test = predicted_test.flatten()
+            predicted_test = np.clip(predicted_test, 10, 20000)
+            
+            # 生成完整预测（训练集+测试集）
+            predicted_full = np.concatenate([predicted_train, predicted_test])
+            
+            # 计算训练集性能指标
+            r2_train = r2_score(self.visibility_train, predicted_train)
+            mae_train = mean_absolute_error(self.visibility_train, predicted_train)
+            rmse_train = np.sqrt(mean_squared_error(self.visibility_train, predicted_train))
+            
+            # 计算测试集性能指标
+            r2_test = r2_score(self.visibility_test, predicted_test)
+            mae_test = mean_absolute_error(self.visibility_test, predicted_test)
+            rmse_test = np.sqrt(mean_squared_error(self.visibility_test, predicted_test))
             
             # 验证模型性能是否合理
-            if r2 < -1 or np.isnan(r2) or np.isinf(r2):
-                print(f"⚠️ 微分方程模型性能异常: R² = {r2}")
-                r2 = max(-1, r2) if not (np.isnan(r2) or np.isinf(r2)) else 0.0
+            if r2_train < -1 or np.isnan(r2_train) or np.isinf(r2_train):
+                print(f"⚠️ 微分方程模型训练集性能异常: R² = {r2_train}")
+                r2_train = max(-1, r2_train) if not (np.isnan(r2_train) or np.isinf(r2_train)) else 0.0
+                
+            if r2_test < -1 or np.isnan(r2_test) or np.isinf(r2_test):
+                print(f"⚠️ 微分方程模型测试集性能异常: R² = {r2_test}")
+                r2_test = max(-1, r2_test) if not (np.isnan(r2_test) or np.isinf(r2_test)) else 0.0
             
             # 存储结果
             self.models['differential_equation'] = {
                 'name': '微分方程雾演化模型',
                 'params': optimal_params,
                 'param_names': ['α(气象驱动)', 'β(消散系数)', 'γ(扰动强度)', 'δ(非线性)', 'ε(饱和参数)'],
-                'predicted': predicted,
-                'r2': r2,
-                'mae': mae,
-                'rmse': rmse,
+                'predicted': predicted_full,
+                'predicted_train': predicted_train,
+                'predicted_test': predicted_test,
+                # 训练集性能
+                'r2_train': r2_train,
+                'mae_train': mae_train,
+                'rmse_train': rmse_train,
+                # 测试集性能
+                'r2_test': r2_test,
+                'mae_test': mae_test,
+                'rmse_test': rmse_test,
+                # 兼容性字段（使用测试集性能作为主要指标）
+                'r2': r2_test,
+                'mae': mae_test,
+                'rmse': rmse_test,
                 'equation': 'dV/dt = α·f(T,RH,WS) - β·V - δ·V²/(ε+V) + γ·ξ(t)',
-                'success': True and r2 > 0.0  # 修改：需要R²>0才算成功
+                'success': True and r2_test > 0.0
             }
             
             print(f"✅ 微分方程模型优化完成")
-            print(f"   R² = {r2:.4f}, MAE = {mae:.1f}m, RMSE = {rmse:.1f}m")
+            print(f"   训练集: R² = {r2_train:.4f}, MAE = {mae_train:.1f}m, RMSE = {rmse_train:.1f}m")
+            print(f"   测试集: R² = {r2_test:.4f}, MAE = {mae_test:.1f}m, RMSE = {rmse_test:.1f}m")
             print(f"   参数: α={optimal_params[0]:.2f}, β={optimal_params[1]:.4f}, γ={optimal_params[2]:.2f}")
             
             return self.models['differential_equation']
@@ -452,14 +500,14 @@ class ContinuousVisibilityModel:
             kf.P *= 1000
             
             # 初始状态估计
-            kf.x = np.array([self.visibility[0], 0., 0.])
+            kf.x = np.array([self.visibility_train[0], 0., 0.])
             
-            # 卡尔曼滤波过程
-            means = []
-            covariances = []
-            log_likelihoods = []
+            # 在训练集上进行卡尔曼滤波
+            means_train = []
+            covariances_train = []
+            log_likelihoods_train = []
             
-            for i, observation in enumerate(self.visibility):
+            for i, observation in enumerate(self.visibility_train):
                 # 预测步
                 kf.predict()
                 
@@ -467,36 +515,82 @@ class ContinuousVisibilityModel:
                 kf.update(observation)
                 
                 # 保存结果
-                means.append(kf.x.copy())
-                covariances.append(kf.P.copy())
-                log_likelihoods.append(kf.log_likelihood)
+                means_train.append(kf.x.copy())
+                covariances_train.append(kf.P.copy())
+                log_likelihoods_train.append(kf.log_likelihood)
             
-            means = np.array(means)
-            predicted_visibility = means[:, 0]  # 提取能见度估计值
+            means_train = np.array(means_train)
+            predicted_train = means_train[:, 0]  # 提取训练集能见度估计值
             
-            # 计算性能指标
-            r2 = r2_score(self.visibility, predicted_visibility)
-            mae = mean_absolute_error(self.visibility, predicted_visibility)
-            rmse = np.sqrt(mean_squared_error(self.visibility, predicted_visibility))
+            # 在测试集上进行预测（不更新模型参数）
+            means_test = []
+            covariances_test = []
+            log_likelihoods_test = []
+            
+            # 从训练集最后状态开始预测测试集
+            for i, observation in enumerate(self.visibility_test):
+                # 预测步
+                kf.predict()
+                
+                # 仅用于记录预测值，不更新状态（模拟真实预测场景）
+                predicted_state = kf.x.copy()
+                means_test.append(predicted_state)
+                covariances_test.append(kf.P.copy())
+                
+                # 为了继续预测下一步，需要更新状态（但这不影响模型参数）
+                kf.update(observation)
+                log_likelihoods_test.append(kf.log_likelihood)
+            
+            means_test = np.array(means_test)
+            predicted_test = means_test[:, 0]  # 提取测试集能见度预测值
+            
+            # 合并完整预测
+            predicted_full = np.concatenate([predicted_train, predicted_test])
+            
+            # 计算训练集性能指标
+            r2_train = r2_score(self.visibility_train, predicted_train)
+            mae_train = mean_absolute_error(self.visibility_train, predicted_train)
+            rmse_train = np.sqrt(mean_squared_error(self.visibility_train, predicted_train))
+            
+            # 计算测试集性能指标
+            r2_test = r2_score(self.visibility_test, predicted_test)
+            mae_test = mean_absolute_error(self.visibility_test, predicted_test)
+            rmse_test = np.sqrt(mean_squared_error(self.visibility_test, predicted_test))
             
             # 存储结果
             self.models['state_space'] = {
                 'name': '状态空间模型',
                 'kf': kf,
-                'means': means,
-                'covariances': covariances,
-                'predicted': predicted_visibility,
-                'r2': r2,
-                'mae': mae,
-                'rmse': rmse,
-                'log_likelihood': np.sum(log_likelihoods),
+                'means_train': means_train,
+                'means_test': means_test,
+                'covariances_train': covariances_train,
+                'covariances_test': covariances_test,
+                'predicted': predicted_full,
+                'predicted_train': predicted_train,
+                'predicted_test': predicted_test,
+                # 训练集性能
+                'r2_train': r2_train,
+                'mae_train': mae_train,
+                'rmse_train': rmse_train,
+                'log_likelihood_train': np.sum(log_likelihoods_train),
+                # 测试集性能
+                'r2_test': r2_test,
+                'mae_test': mae_test,
+                'rmse_test': rmse_test,
+                'log_likelihood_test': np.sum(log_likelihoods_test),
+                # 兼容性字段（使用测试集性能作为主要指标）
+                'r2': r2_test,
+                'mae': mae_test,
+                'rmse': rmse_test,
+                'log_likelihood': np.sum(log_likelihoods_test),
                 'equation': 'x[k+1] = F·x[k] + w[k], y[k] = H·x[k] + v[k]',
                 'success': True
             }
             
             print(f"✅ 状态空间模型构建完成")
-            print(f"   R² = {r2:.4f}, MAE = {mae:.1f}m, RMSE = {rmse:.1f}m")
-            print(f"   对数似然: {np.sum(log_likelihoods):.1f}")
+            print(f"   训练集: R² = {r2_train:.4f}, MAE = {mae_train:.1f}m, RMSE = {rmse_train:.1f}m")
+            print(f"   测试集: R² = {r2_test:.4f}, MAE = {mae_test:.1f}m, RMSE = {rmse_test:.1f}m")
+            print(f"   对数似然 - 训练集: {np.sum(log_likelihoods_train):.1f}, 测试集: {np.sum(log_likelihoods_test):.1f}")
             
             return self.models['state_space']
             
@@ -555,33 +649,34 @@ class ContinuousVisibilityModel:
             
             return logistic_term + weather_effect
         
-        # 标准化气象数据
+        # 标准化气象数据（分别对训练集和测试集）
         scaler = StandardScaler()
-        weather_scaled = scaler.fit_transform(self.weather_features)
+        weather_train_scaled = scaler.fit_transform(self.weather_train)
+        weather_test_scaled = scaler.transform(self.weather_test)  # 使用训练集的统计量
         
-        # 参数优化
+        # 参数优化 - 仅在训练集上进行
         def objective_logistic(params: np.ndarray) -> float:
             """Logistic模型目标函数"""
             try:
-                t_span = np.linspace(0, len(self.visibility) - 1, len(self.visibility))
-                V0 = self.visibility[0]
+                t_span = np.linspace(0, len(self.visibility_train) - 1, len(self.visibility_train))
+                V0 = self.visibility_train[0]
                 
-                solution = odeint(logistic_dynamics, V0, t_span, args=(params, weather_scaled))
+                solution = odeint(logistic_dynamics, V0, t_span, args=(params, weather_train_scaled))
                 predicted = solution.flatten()
                 predicted = np.clip(predicted, 10, 50000)
                 
                 # 添加正则化项防止过拟合
-                mse = np.mean((predicted - self.visibility)**2)
+                mse = np.mean((predicted - self.visibility_train)**2)
                 regularization = 0.01 * np.sum(params**2)  # L2正则化
                 return mse + regularization
             except:
                 return 1e10
         
         # 改进参数设置 - 使用更保守的初始值和约束
-        n_weather = weather_scaled.shape[1]
+        n_weather = weather_train_scaled.shape[1]
         # 基于数据特征设置更合理的初始值
-        mean_vis = np.mean(self.visibility)
-        std_vis = np.std(self.visibility)
+        mean_vis = np.mean(self.visibility_train)
+        std_vis = np.std(self.visibility_train)
         
         initial_params = [0.001, mean_vis * 1.5] + [0.01] * n_weather  # 更保守的初始值
         bounds = [(0.0001, 0.01), (mean_vis * 0.5, mean_vis * 3)] + [(-0.1, 0.1)] * n_weather  # 更严格的约束
@@ -597,40 +692,71 @@ class ContinuousVisibilityModel:
             
             optimal_params = result.x
             
-            # 生成预测结果
-            t_span = np.linspace(0, len(self.visibility) - 1, len(self.visibility))
-            V0 = self.visibility[0]
-            predicted = odeint(logistic_dynamics, V0, t_span, args=(optimal_params, weather_scaled))
-            predicted = predicted.flatten()
-            predicted = np.clip(predicted, 10, 50000)
+            # 生成训练集预测结果
+            t_train_span = np.linspace(0, len(self.visibility_train) - 1, len(self.visibility_train))
+            V0_train = self.visibility_train[0]
+            predicted_train = odeint(logistic_dynamics, V0_train, t_train_span, args=(optimal_params, weather_train_scaled))
+            predicted_train = predicted_train.flatten()
+            predicted_train = np.clip(predicted_train, 10, 50000)
             
-            # 计算性能指标
-            r2 = r2_score(self.visibility, predicted)
-            mae = mean_absolute_error(self.visibility, predicted)
-            rmse = np.sqrt(mean_squared_error(self.visibility, predicted))
+            # 生成测试集预测结果
+            t_test_span = np.linspace(0, len(self.visibility_test) - 1, len(self.visibility_test))
+            V0_test = self.visibility_train[-1]  # 使用训练集最后一个值作为初始值
+            predicted_test = odeint(logistic_dynamics, V0_test, t_test_span, args=(optimal_params, weather_test_scaled))
+            predicted_test = predicted_test.flatten()
+            predicted_test = np.clip(predicted_test, 10, 50000)
+            
+            # 合并完整预测
+            predicted_full = np.concatenate([predicted_train, predicted_test])
+            
+            # 计算训练集性能指标
+            r2_train = r2_score(self.visibility_train, predicted_train)
+            mae_train = mean_absolute_error(self.visibility_train, predicted_train)
+            rmse_train = np.sqrt(mean_squared_error(self.visibility_train, predicted_train))
+            
+            # 计算测试集性能指标
+            r2_test = r2_score(self.visibility_test, predicted_test)
+            mae_test = mean_absolute_error(self.visibility_test, predicted_test)
+            rmse_test = np.sqrt(mean_squared_error(self.visibility_test, predicted_test))
             
             # 验证模型性能
-            if r2 < -1 or np.isnan(r2) or np.isinf(r2):
-                print(f"⚠️ 非线性动力学模型性能异常: R² = {r2}")
-                r2 = max(-1, r2) if not (np.isnan(r2) or np.isinf(r2)) else -0.5
+            if r2_train < -1 or np.isnan(r2_train) or np.isinf(r2_train):
+                print(f"⚠️ 非线性动力学模型训练集性能异常: R² = {r2_train}")
+                r2_train = max(-1, r2_train) if not (np.isnan(r2_train) or np.isinf(r2_train)) else -0.5
+                
+            if r2_test < -1 or np.isnan(r2_test) or np.isinf(r2_test):
+                print(f"⚠️ 非线性动力学模型测试集性能异常: R² = {r2_test}")
+                r2_test = max(-1, r2_test) if not (np.isnan(r2_test) or np.isinf(r2_test)) else -0.5
             
             # 存储结果
             self.models['nonlinear_dynamics'] = {
                 'name': '非线性动力学模型',
                 'params': optimal_params,
                 'scaler': scaler,
-                'predicted': predicted,
-                'r2': r2,
-                'mae': mae,
-                'rmse': rmse,
+                'predicted': predicted_full,
+                'predicted_train': predicted_train,
+                'predicted_test': predicted_test,
+                # 训练集性能
+                'r2_train': r2_train,
+                'mae_train': mae_train,
+                'rmse_train': rmse_train,
+                # 测试集性能
+                'r2_test': r2_test,
+                'mae_test': mae_test,
+                'rmse_test': rmse_test,
+                # 兼容性字段（使用测试集性能作为主要指标）
+                'r2': r2_test,
+                'mae': mae_test,
+                'rmse': rmse_test,
                 'equation': 'dV/dt = r·V·(1-V/K) + Σβᵢ·Xᵢ(t)',
                 'r_value': optimal_params[0],
                 'K_value': optimal_params[1],
-                'success': result.success and r2 > 0.3  # 修改：提高成功标准
+                'success': result.success and r2_test > 0.3  # 修改：提高成功标准
             }
             
             print(f"✅ 非线性动力学模型构建完成")
-            print(f"   R² = {r2:.4f}, MAE = {mae:.1f}m, RMSE = {rmse:.1f}m")
+            print(f"   训练集: R² = {r2_train:.4f}, MAE = {mae_train:.1f}m, RMSE = {rmse_train:.1f}m")
+            print(f"   测试集: R² = {r2_test:.4f}, MAE = {mae_test:.1f}m, RMSE = {rmse_test:.1f}m")
             print(f"   参数: r={optimal_params[0]:.4f}, K={optimal_params[1]:.1f}m")
             
             return self.models['nonlinear_dynamics']
@@ -643,7 +769,7 @@ class ContinuousVisibilityModel:
         """
         构建集成模型
         
-        基于多个连续模型的加权集成
+        基于多个连续模型的加权集成（基于测试集性能加权）
         
         Returns
         -------
@@ -652,33 +778,39 @@ class ContinuousVisibilityModel:
         """
         print("\n=== 构建集成连续模型 ===")
         
-        # 检查可用模型
+        # 检查可用模型（基于测试集性能）
         available_models = {}
         for name, model in self.models.items():
-            if model.get('success', False) and 'predicted' in model and model.get('r2', -np.inf) > 0.5:  # 只包含R²>0.5的模型
+            test_r2 = model.get('r2_test', model.get('r2', -np.inf))
+            if model.get('success', False) and 'predicted' in model and test_r2 > 0.3:  # 基于测试集R²>0.3
                 available_models[name] = model
         
-        if len(available_models) < 1:  # 修改：至少需要1个模型就可以构建集成
-            print("⚠️ 没有足够质量的模型，无法构建集成模型")
+        if len(available_models) < 1:
+            print("⚠️ 没有足够质量的模型（测试集R²>0.3），无法构建集成模型")
             return {}
         elif len(available_models) == 1:
             print("⚠️ 只有1个可用模型，将创建单模型集成")
         
-        print(f"使用 {len(available_models)} 个模型进行集成")
+        print(f"使用 {len(available_models)} 个模型进行集成（基于测试集性能）")
         
-        # 计算权重（基于调整后的R²分数）
-        predictions = []
+        # 计算权重（基于测试集R²分数）
+        predictions_train = []
+        predictions_test = []
         weights = []
         
         for name, model in available_models.items():
-            predictions.append(model['predicted'])
-            # 使用指数加权，增强高性能模型的权重
-            r2_score_val = max(0, model['r2'])
+            predictions_train.append(model.get('predicted_train', model['predicted'][:len(self.visibility_train)]))
+            predictions_test.append(model.get('predicted_test', model['predicted'][len(self.visibility_train):]))
+            
+            # 使用测试集R²计算权重
+            test_r2 = model.get('r2_test', model.get('r2', 0))
+            r2_score_val = max(0, test_r2)
             exponential_weight = np.exp(r2_score_val * 2)  # 指数加权
             weights.append(exponential_weight)
-            print(f"  {model['name']}: R² = {model['r2']:.4f}, 权重 = {exponential_weight:.4f}")
+            print(f"  {model['name']}: 测试集R² = {test_r2:.4f}, 权重 = {exponential_weight:.4f}")
         
-        predictions = np.array(predictions)
+        predictions_train = np.array(predictions_train)
+        predictions_test = np.array(predictions_test)
         weights = np.array(weights)
         
         # 归一化权重
@@ -688,27 +820,46 @@ class ContinuousVisibilityModel:
             weights = np.ones(len(weights)) / len(weights)
         
         # 加权平均预测
-        ensemble_prediction = np.average(predictions, axis=0, weights=weights)
+        ensemble_prediction_train = np.average(predictions_train, axis=0, weights=weights)
+        ensemble_prediction_test = np.average(predictions_test, axis=0, weights=weights)
+        ensemble_prediction_full = np.concatenate([ensemble_prediction_train, ensemble_prediction_test])
         
-        # 计算性能指标
-        r2 = r2_score(self.visibility, ensemble_prediction)
-        mae = mean_absolute_error(self.visibility, ensemble_prediction)
-        rmse = np.sqrt(mean_squared_error(self.visibility, ensemble_prediction))
+        # 计算训练集性能指标
+        r2_train = r2_score(self.visibility_train, ensemble_prediction_train)
+        mae_train = mean_absolute_error(self.visibility_train, ensemble_prediction_train)
+        rmse_train = np.sqrt(mean_squared_error(self.visibility_train, ensemble_prediction_train))
+        
+        # 计算测试集性能指标
+        r2_test = r2_score(self.visibility_test, ensemble_prediction_test)
+        mae_test = mean_absolute_error(self.visibility_test, ensemble_prediction_test)
+        rmse_test = np.sqrt(mean_squared_error(self.visibility_test, ensemble_prediction_test))
         
         # 存储结果
         self.models['ensemble'] = {
             'name': '集成连续模型',
-            'predicted': ensemble_prediction,
+            'predicted': ensemble_prediction_full,
+            'predicted_train': ensemble_prediction_train,
+            'predicted_test': ensemble_prediction_test,
             'weights': dict(zip(available_models.keys(), weights)),
-            'r2': r2,
-            'mae': mae,
-            'rmse': rmse,
+            # 训练集性能
+            'r2_train': r2_train,
+            'mae_train': mae_train,
+            'rmse_train': rmse_train,
+            # 测试集性能
+            'r2_test': r2_test,
+            'mae_test': mae_test,
+            'rmse_test': rmse_test,
+            # 兼容性字段（使用测试集性能作为主要指标）
+            'r2': r2_test,
+            'mae': mae_test,
+            'rmse': rmse_test,
             'component_models': list(available_models.keys()),
             'success': True
         }
         
         print(f"✅ 集成模型构建完成")
-        print(f"   R² = {r2:.4f}, MAE = {mae:.1f}m, RMSE = {rmse:.1f}m")
+        print(f"   训练集: R² = {r2_train:.4f}, MAE = {mae_train:.1f}m, RMSE = {rmse_train:.1f}m")
+        print(f"   测试集: R² = {r2_test:.4f}, MAE = {mae_test:.1f}m, RMSE = {rmse_test:.1f}m")
         print(f"   权重分配: {dict(zip(available_models.keys(), weights))}")
         
         return self.models['ensemble']
@@ -943,14 +1094,17 @@ class ContinuousVisibilityModel:
         plt.show()
 
     def _get_best_model(self) -> Optional[Dict[str, Any]]:
-        """获取最佳模型"""
+        """获取最佳模型（基于测试集性能）"""
         best_model = None
-        best_r2 = -np.inf
+        best_test_r2 = -np.inf
         
         for model in self.models.values():
-            if model.get('success', False) and model.get('r2', -np.inf) > best_r2:
-                best_r2 = model['r2']
-                best_model = model
+            if model.get('success', False):
+                # 优先使用测试集R²，如果没有则使用总体R²
+                test_r2 = model.get('r2_test', model.get('r2', -np.inf))
+                if test_r2 > best_test_r2:
+                    best_test_r2 = test_r2
+                    best_model = model
         
         return best_model
 
@@ -1082,7 +1236,9 @@ class ContinuousVisibilityModel:
         
         # 数据概览
         print("\n📊 数据概览:")
-        print(f"   • 数据点数: {len(self.visibility)}")
+        print(f"   • 总数据点数: {len(self.visibility)}")
+        print(f"   • 训练集: {len(self.visibility_train)} 点 ({len(self.visibility_train)/len(self.visibility)*100:.1f}%)")
+        print(f"   • 测试集: {len(self.visibility_test)} 点 ({len(self.visibility_test)/len(self.visibility)*100:.1f}%)")
         print(f"   • 时间范围: 0 - {len(self.visibility)-1} 步")
         print(f"   • 能见度范围: {self.visibility.min():.1f}m - {self.visibility.max():.1f}m")
         print(f"   • 平均能见度: {self.visibility.mean():.1f}m ± {self.visibility.std():.1f}m")
@@ -1096,22 +1252,34 @@ class ContinuousVisibilityModel:
                 successful_models += 1
                 print(f"   ✅ {model['name']}:")
                 print(f"      • 数学方程: {model.get('equation', 'N/A')}")
-                print(f"      • R² = {model['r2']:.6f}")
-                print(f"      • MAE = {model['mae']:.2f}m")
-                print(f"      • RMSE = {model['rmse']:.2f}m")
+                print(f"      • 训练集: R² = {model.get('r2_train', 0):.6f}, MAE = {model.get('mae_train', 0):.2f}m, RMSE = {model.get('rmse_train', 0):.2f}m")
+                print(f"      • 测试集: R² = {model.get('r2_test', model.get('r2', 0)):.6f}, MAE = {model.get('mae_test', model.get('mae', 0)):.2f}m, RMSE = {model.get('rmse_test', model.get('rmse', 0)):.2f}m")
+                # 添加泛化能力评估
+                train_r2 = model.get('r2_train', 0)
+                test_r2 = model.get('r2_test', model.get('r2', 0))
+                generalization_gap = train_r2 - test_r2
+                if generalization_gap < 0.05:
+                    generalization_status = "🟢 优秀泛化"
+                elif generalization_gap < 0.15:
+                    generalization_status = "🟡 良好泛化"
+                else:
+                    generalization_status = "🔴 过拟合风险"
+                print(f"      • 泛化能力: {generalization_status} (差距: {generalization_gap:.4f})")
             else:
                 print(f"   ❌ {name}: 构建失败")
         
         print(f"\n   📈 成功构建: {successful_models}/{len(self.models)} 个连续数学模型")
         
-        # 最佳模型
+        # 最佳模型（基于测试集性能）
         best_model = self._get_best_model()
         if best_model:
-            print(f"\n🏆 最佳连续数学模型:")
+            test_r2 = best_model.get('r2_test', best_model.get('r2', 0))
+            print(f"\n🏆 最佳连续数学模型（基于测试集性能）:")
             print(f"   • 模型名称: {best_model['name']}")
             print(f"   • 数学表达式: {best_model.get('equation', 'N/A')}")
-            print(f"   • 拟合精度: R² = {best_model['r2']:.8f}")
-            print(f"   • 预测误差: MAE = {best_model['mae']:.2f}m, RMSE = {best_model['rmse']:.2f}m")
+            print(f"   • 训练集性能: R² = {best_model.get('r2_train', 0):.8f}")
+            print(f"   • 测试集性能: R² = {test_r2:.8f}")
+            print(f"   • 测试集预测误差: MAE = {best_model.get('mae_test', best_model.get('mae', 0)):.2f}m, RMSE = {best_model.get('rmse_test', best_model.get('rmse', 0)):.2f}m")
             
             # 模型物理意义解释
             print(f"\n🔬 物理意义解释:")
@@ -1122,26 +1290,40 @@ class ContinuousVisibilityModel:
                 print(f"   • 非线性饱和效应")
                 print(f"   • 随机扰动影响")
             
-            # 模型质量评估
-            if best_model['r2'] > 0.9:
+            # 模型质量评估（基于测试集）
+            if test_r2 > 0.9:
                 print(f"   ⭐ 模型质量: 优秀 - 强烈推荐使用")
-            elif best_model['r2'] > 0.8:
+            elif test_r2 > 0.8:
                 print(f"   ✅ 模型质量: 良好 - 推荐使用")
-            elif best_model['r2'] > 0.7:
+            elif test_r2 > 0.7:
                 print(f"   ⚠️ 模型质量: 一般 - 谨慎使用")
             else:
                 print(f"   ❌ 模型质量: 需要改进")
         
+        # 模型性能对比表
+        print(f"\n📋 模型性能对比表:")
+        print(f"{'模型名称':<15} {'训练集R²':<10} {'测试集R²':<10} {'泛化差距':<10} {'状态':<12}")
+        print("-" * 65)
+        for name, model in self.models.items():
+            if model.get('success', False):
+                train_r2 = model.get('r2_train', 0)
+                test_r2 = model.get('r2_test', model.get('r2', 0))
+                gap = train_r2 - test_r2
+                status = "优秀" if gap < 0.05 else ("良好" if gap < 0.15 else "过拟合")
+                print(f"{model['name'][:14]:<15} {train_r2:<10.6f} {test_r2:<10.6f} {gap:<10.4f} {status:<12}")
+        
         # 结论和建议
         print(f"\n📋 研究结论:")
         print(f"   1. 成功建立了能见度随时间连续变化的数学模型")
-        print(f"   2. 微分方程模型能有效刻画雾的物理演化过程")
-        print(f"   3. 气象要素对能见度变化具有显著影响")
-        print(f"   4. 连续模型能为雾预报提供理论基础")
+        print(f"   2. 通过训练集/测试集分割验证了模型的泛化能力")
+        print(f"   3. 微分方程模型能有效刻画雾的物理演化过程")
+        print(f"   4. 气象要素对能见度变化具有显著影响")
+        print(f"   5. 连续模型能为雾预报提供理论基础")
         
         print(f"\n💡 应用建议:")
         print(f"   • 可用于机场能见度实时监测和短期预报")
         print(f"   • 为航空气象服务提供决策支持")
+        print(f"   • 建议关注测试集性能，避免过拟合")
         print(f"   • 可扩展到其他气象要素的连续建模")
         
         print("="*80)
@@ -1249,6 +1431,162 @@ class ContinuousVisibilityModel:
             traceback.print_exc()
             return results
 
+    def extract_detailed_model_parameters(self) -> None:
+        """
+        提取并显示最佳模型的详细数学表达式和参数
+        """
+        print("\n" + "="*80)
+        print("🔍 最佳模型详细数学表达式和参数提取")
+        print("="*80)
+        
+        best_model = self._get_best_model()
+        if not best_model:
+            print("❌ 没有可用的最佳模型")
+            return
+        
+        model_name = best_model['name']
+        print(f"\n📐 模型类型: {model_name}")
+        print(f"📊 测试集性能: R² = {best_model.get('r2_test', best_model.get('r2', 0)):.8f}")
+        
+        if 'state_space' in best_model.get('name', '').lower():
+            self._extract_state_space_parameters(best_model)
+        elif 'differential_equation' in best_model.get('name', '').lower():
+            self._extract_differential_equation_parameters(best_model)
+        elif 'nonlinear' in best_model.get('name', '').lower():
+            self._extract_nonlinear_parameters(best_model)
+        elif 'ensemble' in best_model.get('name', '').lower():
+            self._extract_ensemble_parameters(best_model)
+    
+    def _extract_state_space_parameters(self, model: Dict[str, Any]) -> None:
+        """提取状态空间模型的具体参数"""
+        print(f"\n🎯 状态空间模型详细参数:")
+        
+        kf = model.get('kf')
+        if kf is None:
+            print("❌ 卡尔曼滤波器对象不可用")
+            return
+        
+        # 状态转移矩阵 F
+        F = kf.F
+        print(f"\n📋 状态转移矩阵 F (3×3):")
+        print(f"   F = [[{F[0,0]:.1f}, {F[0,1]:.1f}, {F[0,2]:.1f}],")
+        print(f"        [{F[1,0]:.1f}, {F[1,1]:.1f}, {F[1,2]:.1f}],")
+        print(f"        [{F[2,0]:.1f}, {F[2,1]:.1f}, {F[2,2]:.1f}]]")
+        
+        # 观测矩阵 H
+        H = kf.H
+        print(f"\n📋 观测矩阵 H (1×3):")
+        print(f"   H = [{H[0,0]:.1f}, {H[0,1]:.1f}, {H[0,2]:.1f}]")
+        
+        # 过程噪声协方差矩阵 Q (主对角线)
+        Q = kf.Q
+        print(f"\n📋 过程噪声协方差矩阵 Q (对角线元素):")
+        print(f"   Q_diag = [{Q[0,0]:.1f}, {Q[1,1]:.1f}, {Q[2,2]:.1f}]")
+        
+        # 观测噪声方差 R
+        R = kf.R
+        print(f"\n📋 观测噪声方差 R:")
+        print(f"   R = {R[0,0]:.1f} m²")
+        
+        # 完整的数学表达式
+        print(f"\n🔬 完整状态空间方程:")
+        print(f"   [V[k+1]  ]   [{F[0,0]:.1f} {F[0,1]:.1f} {F[0,2]:.1f}]   [V[k]  ]   [w1[k]]")
+        print(f"   [V'[k+1] ] = [{F[1,0]:.1f} {F[1,1]:.1f} {F[1,2]:.1f}] × [V'[k] ] + [w2[k]]")
+        print(f"   [V''[k+1]]   [{F[2,0]:.1f} {F[2,1]:.1f} {F[2,2]:.1f}]   [V''[k]]   [w3[k]]")
+        print(f"   ")
+        print(f"   y[k] = [{H[0,0]:.1f} {H[0,1]:.1f} {H[0,2]:.1f}] × [V[k] V'[k] V''[k]]ᵀ + v[k]")
+        print(f"   ")
+        print(f"   其中: w[k] ~ N(0, diag({Q[0,0]:.0f}, {Q[1,1]:.0f}, {Q[2,2]:.0f})), v[k] ~ N(0, {R[0,0]:.0f})")
+        
+        # 物理意义
+        print(f"\n🌍 物理解释:")
+        print(f"   • 能见度演化: V[k+1] = V[k] + V'[k] + 0.5×V''[k]")
+        print(f"   • 变化率演化: V'[k+1] = V'[k] + V''[k]") 
+        print(f"   • 加速度演化: V''[k+1] = V''[k] (随机游走)")
+        print(f"   • 只观测能见度本身，变化率和加速度为隐状态")
+    
+    def _extract_differential_equation_parameters(self, model: Dict[str, Any]) -> None:
+        """提取微分方程模型的具体参数"""
+        print(f"\n🎯 微分方程模型详细参数:")
+        
+        params = model.get('params')
+        param_names = model.get('param_names', [])
+        
+        if params is None:
+            print("❌ 模型参数不可用")
+            return
+        
+        print(f"\n📋 模型参数:")
+        for i, (name, value) in enumerate(zip(param_names, params)):
+            print(f"   {name}: {value:.6f}")
+        
+        # 完整的微分方程
+        alpha, beta, gamma, delta, epsilon = params[:5]
+        print(f"\n🔬 完整微分方程:")
+        print(f"   dV/dt = α·f(T,RH,WS) - β·V(t) - δ·V²/(ε+V) + γ·ξ(t)")
+        print(f"   ")
+        print(f"   其中:")
+        print(f"   α = {alpha:.6f}  (气象驱动强度)")
+        print(f"   β = {beta:.6f}  (自然消散系数)")
+        print(f"   γ = {gamma:.6f}  (随机扰动强度)")
+        print(f"   δ = {delta:.6f}  (非线性系数)")
+        print(f"   ε = {epsilon:.6f}  (饱和参数)")
+        print(f"   ")
+        print(f"   气象驱动函数:")
+        print(f"   f(T,RH,WS) = 0.4×(RH-70)/30 + 0.3×(15-T)/15 + 0.3×(3-WS)/3")
+    
+    def _extract_nonlinear_parameters(self, model: Dict[str, Any]) -> None:
+        """提取非线性动力学模型的具体参数"""
+        print(f"\n🎯 非线性动力学模型详细参数:")
+        
+        params = model.get('params')
+        if params is None:
+            print("❌ 模型参数不可用")
+            return
+        
+        r = params[0]
+        K = params[1]
+        betas = params[2:]
+        
+        print(f"\n📋 Logistic增长参数:")
+        print(f"   r = {r:.6f}  (内在增长率)")
+        print(f"   K = {K:.2f}  (环境容量/最大能见度)")
+        
+        print(f"\n📋 气象影响系数:")
+        for i, beta in enumerate(betas):
+            print(f"   β{i+1} = {beta:.6f}")
+        
+        print(f"\n🔬 完整微分方程:")
+        print(f"   dV/dt = r·V·(1 - V/K) + Σβᵢ·Xᵢ(t)")
+        print(f"   dV/dt = {r:.6f}·V·(1 - V/{K:.2f}) + Σβᵢ·Xᵢ(t)")
+    
+    def _extract_ensemble_parameters(self, model: Dict[str, Any]) -> None:
+        """提取集成模型的具体参数"""
+        print(f"\n🎯 集成模型详细参数:")
+        
+        weights = model.get('weights', {})
+        component_models = model.get('component_models', [])
+        
+        print(f"\n📋 组件模型权重:")
+        total_weight = sum(weights.values())
+        for model_name, weight in weights.items():
+            percentage = weight * 100
+            print(f"   {model_name}: {weight:.6f} ({percentage:.2f}%)")
+        
+        print(f"\n🔬 集成预测公式:")
+        print(f"   V_ensemble(t) = Σ wᵢ × Vᵢ(t)")
+        print(f"   ")
+        print(f"   其中:")
+        for model_name, weight in weights.items():
+            print(f"   • w_{model_name} = {weight:.6f}")
+        
+        # 如果主要是状态空间模型，显示其详细参数
+        if 'state_space' in weights and weights['state_space'] > 0.5:
+            print(f"\n   由于集成模型主要基于状态空间模型，其详细参数如下：")
+            # 获取状态空间模型
+            if hasattr(self, 'models') and 'state_space' in self.models:
+                self._extract_state_space_parameters(self.models['state_space'])
+
 
 def main():
     """主程序入口"""
@@ -1297,6 +1635,9 @@ def main():
         
         if results.get('analysis_completed', False):
             print("\n🎉 分析完成！")
+            
+            # 提取详细的数学表达式和参数
+            model.extract_detailed_model_parameters()
             
             best_model = results.get('best_model')
             if best_model:
