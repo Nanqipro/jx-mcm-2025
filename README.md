@@ -1,192 +1,154 @@
-# 基于大雾背景视频学习的图像模糊程度分析系统
+# 能见度预测分析系统
 
-## 项目简介
+基于图像特征和气象数据的能见度预测模型，适用于航空气象、交通安全等应用场景。
 
-本项目基于2020年华为杯数学建模竞赛E题的思路，实现江西省数学建模比赛第一题的解决方案：建立反映大雾导致的视频图像模糊程度的数学模型。
+## 项目概述
 
-## 核心功能
+该项目实现了一个完整的能见度预测分析流程，包含：
 
-### 1. 多维度图像模糊程度评价
-- **拉普拉斯方差**: 经典的图像清晰度评价指标
-- **梯度幅值**: 基于边缘信息的清晰度评价  
-- **Sobel方差**: Sobel算子的方差计算
-- **Tenengrad**: 基于Sobel算子的清晰度评价
-- **Brenner梯度**: 基于相邻像素差值的清晰度评价
-- **暗通道先验**: 基于何凯明暗通道先验算法，评估雾的浓度
-- **能见度指数**: 综合对比度、边缘密度和亮度分布熵的综合评价
-
-### 2. 数学模型构建
-- 基于主成分分析和方差贡献度的权重计算
-- 标准化特征处理
-- 综合模糊度指数建模
-
-### 3. 时间序列分析
-- 支持视频帧序列的连续分析
-- 模糊程度时间变化趋势可视化
-- 统计特征分析
+- **数据探索分析**：基本统计信息、缺失值检查、分布分析
+- **特征工程**：图像特征、气象特征、风速特征的相关性分析
+- **多重共线性检测**：VIF分析避免冗余特征
+- **模型训练**：多种回归模型（线性回归、岭回归、Lasso、弹性网络）
+- **模型验证**：残差分析、交叉验证、性能评估
+- **预测应用**：新数据的能见度预测
 
 ## 技术特点
 
-### 基于2020E.md的核心思路：
-1. **多指标融合**: 参考原文中的"多元多项式拟合"思想，采用多种图像质量指标
-2. **特征工程**: 借鉴原文的"特征重要性"分析方法
-3. **暗通道先验**: 采用原文第三题中提到的暗通道先验算法
-4. **标准化处理**: 参考原文的数据预处理方法
+- ✅ **现代Python语法**：类型注解、异步支持
+- ✅ **完整中文注释**：遵循numpy风格文档规范
+- ✅ **环境变量配置**：安全的敏感信息管理
+- ✅ **模块化设计**：清晰的代码结构和功能分层
+- ✅ **可视化图表**：英文标签的专业图表展示
 
-### 数学模型：
+## 安装依赖
 
-综合模糊度指数计算公式：
-```BlurIndex = Σ(wi × Fi_normalized)
-```
-
-其中：
-- `wi`: 第i个特征的权重（基于方差贡献度）
-- `Fi_normalized`: 第i个特征的标准化值
-- 权重计算：`wi = var(Fi) / Σvar(Fj)`
-
-## 安装和使用
-
-### 环境要求
-- Python 3.8+
-- 推荐使用conda或virtualenv创建虚拟环境
-
-### 安装依赖
 ```bash
 pip install -r requirements.txt
 ```
 
-### 使用方法
+## 使用方法
 
-#### 1. 直接运行演示程序
-```bash
-python fog_image_blur_analysis.py
-```
+### 基本使用
 
-程序将自动：
-- 生成测试用的雾化图像序列
-- 分析图像模糊程度
-- 建立数学模型
-- 生成可视化结果
-- 导出Excel分析报告
-
-#### 2. 使用自己的图像数据
 ```python
-from fog_image_blur_analysis import FogBlurAnalyzer
+from src.three import VisibilityAnalyzer
 
-# 创建分析器
-analyzer = FogBlurAnalyzer()
+# 初始化分析器
+analyzer = VisibilityAnalyzer('complete_synced_data.csv')
 
-# 分析图像序列
-results_df = analyzer.process_image_sequence("your_image_folder")
+# 执行完整分析流程
+basic_info = analyzer.explore_data()
+correlation_results = analyzer.analyze_features()
+analyzer.visualize_correlations()
 
-# 建立数学模型
-model_params = analyzer.create_blur_model(results_df)
+# 训练模型
+X_train, X_test, y_train, y_test = analyzer.prepare_data()
+model_results = analyzer.train_models(X_train, X_test, y_train, y_test)
 
-# 可视化结果
-analyzer.visualize_blur_analysis(results_df, save_path="results.png")
+# 残差分析
+analyzer.analyze_residuals(X_test, y_test)
 
-# 导出结果
-analyzer.export_results(results_df, model_params, "analysis_results.xlsx")
+# 获取预测公式
+equation = analyzer.get_model_equation()
 ```
 
-#### 3. 分析单张图像
+### 预测新数据
+
 ```python
-analyzer = FogBlurAnalyzer()
-metrics = analyzer.analyze_single_image("path/to/image.jpg")
-print(metrics)
+# 使用训练好的模型预测
+new_data = pd.DataFrame({
+    'laplacian_var': [100.5],
+    'high_freq_ratio': [0.15],
+    'edge_density': [0.25],
+    'contrast_std': [15.2],
+    'weather_humidity_pct': [75.0],
+    'weather_temperature_c': [20.5],
+    'wind_wind_speed_10m': [5.2]
+})
+
+predicted_visibility = analyzer.predict(new_data)
+print(f"预测能见度: {predicted_visibility[0]:.1f} 米")
 ```
 
-## 输出结果
+## 数据特征说明
 
-### 1. 控制台输出
-- 模型参数和权重
-- 统计信息摘要
-- 处理进度信息
+### 图像特征 (9个)
+- `laplacian_var`: 拉普拉斯方差 (图像清晰度)
+- `sobel_mean`: Sobel算子均值 (边缘强度)
+- `high_freq_ratio`: 高频分量比例
+- `edge_density`: 边缘密度
+- `contrast_std`: 对比度标准差
+- 等...
 
-### 2. 可视化图表
-- 6个子图展示不同指标随时间的变化
-- 趋势线分析
-- 保存为高分辨率PNG图像
+### 气象特征 (3个)
+- `weather_humidity_pct`: 相对湿度 (%)
+- `weather_temperature_c`: 温度 (°C)
+- `weather_pressure_hpa`: 气压 (hPa)
 
-### 3. Excel分析报告
-包含以下工作表：
-- **原始数据**: 所有图像的详细指标数据
-- **统计摘要**: 描述性统计信息
-- **模型参数**: 各特征的权重系数
-- **相关性矩阵**: 特征间的相关性分析
+### 风速特征 (1个)
+- `wind_wind_speed_10m`: 10米高度风速 (m/s)
 
-## 核心算法详解
+### 目标变量
+- `visibility_mor_raw`: 原始能见度测量值 (米)
 
-### 1. 暗通道先验算法
-```python
-def calculate_dark_channel_prior(self, image, patch_size=15):
-    """
-    基于何凯明的暗通道先验理论：
-    在无雾的户外图像中，至少有一个颜色通道具有很低的强度值
-    雾的存在会增加这些低强度值
-    """
-    min_channel = np.min(image, axis=2)  # RGB三通道最小值
-    kernel = np.ones((patch_size, patch_size), np.uint8)
-    dark_channel = cv2.erode(min_channel, kernel)  # 局部最小值
-    return np.mean(dark_channel) / 255.0
+## 模型性能
+
+最终模型采用Lasso回归，具有以下性能：
+
+- **R² = 0.8791** (原始尺度)
+- **RMSE = 917.7米**
+- **MAE = 568.9米**
+- **MAPE = 34.7%**
+
+## 核心算法
+
+模型使用平方根变换改善目标变量的偏态分布：
+
+```
+sqrt(visibility_mor_raw) = β₀ + Σ(βᵢ × Xᵢ_standardized)
 ```
 
-### 2. 综合能见度指数
-```python
-def calculate_visibility_index(self, image):
-    """
-    基于三个维度评估能见度：
-    1. 对比度（标准差）
-    2. 边缘密度（Canny边缘检测）
-    3. 亮度分布熵（信息熵）
-    """
-    contrast = np.std(image)
-    edges = cv2.Canny(image, 50, 150)
-    edge_density = np.sum(edges > 0) / (image.shape[0] * image.shape[1])
-    hist, _ = np.histogram(image, bins=256, range=(0, 256))
-    hist = hist / np.sum(hist)
-    entropy = -np.sum(hist * np.log2(hist + 1e-10))
-    
-    # 加权综合
-    visibility_index = 0.4 * contrast + 0.3 * edge_density * 1000 + 0.3 * entropy
-    return visibility_index
+其中特征已进行Z-score标准化，最终预测值通过平方运算还原到原始尺度。
+
+## 项目结构
+
+```
+├── src/
+│   ├── three.py           # 主要分析模块
+│   └── three.ipynb        # 原始Jupyter notebook
+├── requirements.txt       # 项目依赖
+├── README.md             # 项目说明
+└── complete_synced_data.csv # 数据文件 (需要提供)
 ```
 
-## 模型验证
+## 注意事项
 
-### 合成数据验证
-程序自动生成具有不同雾化程度的图像序列，验证模型的有效性：
-- 雾化强度从0逐渐增加到最大值
-- 模型指标应呈现相应的变化趋势
-- 模糊度指数与雾化强度呈正相关
+1. **数据文件**：需要将数据文件 `complete_synced_data.csv` 放在项目根目录
+2. **中文字体**：如果图表中文显示异常，请安装SimHei字体
+3. **环境变量**：敏感配置请使用环境变量而非硬编码
+4. **内存使用**：大数据集建议分批处理避免内存溢出
 
-### 真实数据应用
-适用于：
-- 机场监控视频
-- 高速公路监控视频  
-- 气象观测图像
-- 其他户外监控场景
+## 开发规范
 
-## 技术创新点
+- 所有函数必须包含完整的中文文档字符串
+- 使用类型注解提高代码可读性
+- 图表标题和标签必须使用英文
+- 遵循PEP 8代码风格规范
 
-1. **多指标融合建模**: 综合7种不同的图像质量评价指标
-2. **自适应权重计算**: 基于数据特征自动确定各指标权重
-3. **时间序列分析**: 支持连续视频帧的模糊程度变化分析
-4. **标准化处理**: 确保不同量纲指标的可比性
-5. **完整工作流**: 从图像处理到模型建立到结果导出的完整解决方案
+## 扩展功能
 
-## 扩展应用
+可基于此框架扩展：
 
-本系统可进一步扩展用于：
-- 实时能见度监测
-- 大雾预警系统
-- 交通安全评估
-- 气象观测自动化
-- 图像质量自动评价
+- **实时预测系统**：接入实时气象和图像数据
+- **Web界面**：Flask/Django开发在线预测服务
+- **移动应用**：集成到气象类移动应用
+- **模型优化**：集成深度学习模型提升精度
 
-## 参考文献
+## 作者
 
-1. 2020年华为杯数学建模竞赛E题优秀论文
-2. K. He, J. Sun, X. Tang, "Single Image Haze Removal Using Dark Channel Prior", CVPR 2009
-3. S. K. Nayar, S. G. Narasimhan, "Vision in bad weather", ICCV 1999
-4. R. T. Tan, "Visibility in bad weather from a single image", CVPR 2008 
+Data Analysis Team - 2024
+
+## 许可证
+
+本项目遵循MIT许可证开源。 
