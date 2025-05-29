@@ -31,10 +31,114 @@ import plotly.express as px
 from scipy import stats
 from scipy.stats import pearsonr, spearmanr
 import glob
+import matplotlib
+from matplotlib.font_manager import FontProperties
+import platform
 
 # 设置中文字体支持
-plt.rcParams['font.sans-serif'] = ['SimHei', 'DejaVu Sans', 'Arial Unicode MS']
-plt.rcParams['axes.unicode_minus'] = False
+def setup_chinese_fonts():
+    """
+    设置中文字体支持
+    """
+    system = platform.system()
+    
+    if system == "Windows":
+        # Windows系统中文字体
+        font_list = ['Microsoft YaHei', 'SimHei', 'KaiTi', 'SimSun', 'FangSong']
+    elif system == "Darwin":  # macOS
+        # macOS系统中文字体
+        font_list = ['PingFang SC', 'Hiragino Sans GB', 'STHeiti', 'SimHei']
+    else:  # Linux
+        # Linux系统中文字体
+        font_list = ['WenQuanYi Micro Hei', 'WenQuanYi Zen Hei', 'Noto Sans CJK SC', 'SimHei']
+    
+    # 添加默认字体作为备选
+    font_list.extend(['DejaVu Sans', 'Arial Unicode MS', 'sans-serif'])
+    
+    # 设置matplotlib中文字体
+    matplotlib.rcParams['font.sans-serif'] = font_list
+    matplotlib.rcParams['axes.unicode_minus'] = False
+    matplotlib.rcParams['font.size'] = 10
+    
+    # 验证字体设置
+    try:
+        # 测试中文字体渲染
+        fig, ax = plt.subplots(figsize=(1, 1))
+        ax.text(0.5, 0.5, '测试中文字体', fontsize=12, ha='center')
+        plt.close(fig)
+        print("✓ 中文字体配置成功")
+    except Exception as e:
+        print(f"⚠️  中文字体配置可能有问题: {e}")
+        # 备用方案：使用系统默认字体
+        matplotlib.rcParams['font.family'] = 'sans-serif'
+
+# 调用字体设置函数
+setup_chinese_fonts()
+
+def list_available_chinese_fonts():
+    """
+    列出系统中可用的中文字体
+    """
+    from matplotlib.font_manager import fontManager
+    
+    chinese_fonts = []
+    for font in fontManager.ttflist:
+        # 检查字体名称是否包含中文相关字符
+        font_name = font.name
+        if any(keyword in font_name for keyword in [
+            'Microsoft YaHei', 'SimHei', 'SimSun', 'KaiTi', 'FangSong',
+            'PingFang', 'Hiragino', 'STHeiti', 'WenQuanYi', 'Noto Sans CJK'
+        ]):
+            chinese_fonts.append(font_name)
+    
+    if chinese_fonts:
+        print("系统中检测到的中文字体:")
+        for font in set(chinese_fonts):
+            print(f"  - {font}")
+    else:
+        print("⚠️  未检测到常见的中文字体")
+        print("建议安装以下字体之一:")
+        print("  - Windows: Microsoft YaHei, SimHei")
+        print("  - macOS: PingFang SC")  
+        print("  - Linux: WenQuanYi Micro Hei")
+    
+    return list(set(chinese_fonts))
+
+# 检测可用中文字体
+available_fonts = list_available_chinese_fonts()
+
+def set_chinese_text(ax, title=None, xlabel=None, ylabel=None):
+    """
+    为图表设置中文标题和标签，确保正确显示
+    
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        图表轴对象
+    title : str, optional
+        图表标题
+    xlabel : str, optional  
+        x轴标签
+    ylabel : str, optional
+        y轴标签
+    """
+    # 设置字体属性
+    font_prop = FontProperties()
+    if available_fonts:
+        font_prop.set_family(available_fonts[0])
+    
+    if title:
+        ax.set_title(title, fontproperties=font_prop, fontsize=12, fontweight='bold')
+    if xlabel:
+        ax.set_xlabel(xlabel, fontproperties=font_prop, fontsize=10)
+    if ylabel:
+        ax.set_ylabel(ylabel, fontproperties=font_prop, fontsize=10)
+    
+    # 设置图例字体
+    legend = ax.get_legend()
+    if legend:
+        for text in legend.get_texts():
+            text.set_fontproperties(font_prop)
 
 # 设置图表样式
 sns.set_style("whitegrid")
@@ -128,13 +232,20 @@ class WeatherDataEDA:
         print("=" * 60)
         
         datasets = {
-            'VIS (Visibility)': self.vis_data,
-            'PTU (Pressure/Temperature/Humidity)': self.ptu_data, 
-            'WIND (Wind)': self.wind_data
+            'VIS (能见度)': self.vis_data,
+            'PTU (气压/温度/湿度)': self.ptu_data, 
+            'WIND (风速风向)': self.wind_data
         }
         
         fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle('Data Quality Analysis Overview', fontsize=16, fontweight='bold')
+        
+        # 设置整体标题的中文字体
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            fig.suptitle('数据质量分析概览', fontproperties=font_prop, fontsize=16, fontweight='bold')
+        else:
+            fig.suptitle('数据质量分析概览', fontsize=16, fontweight='bold')
         
         for i, (name, data) in enumerate(datasets.items()):
             if data is not None and not data.empty:
@@ -166,9 +277,18 @@ class WeatherDataEDA:
                         missing_matrix = data[numeric_cols].isnull()
                         sns.heatmap(missing_matrix.T, ax=ax, cbar=True, 
                                   cmap='YlOrRd', yticklabels=True)
-                        ax.set_title(f'{name}\nMissing Values Heatmap', fontsize=12)
-                        ax.set_xlabel('Time (seconds precision)', fontsize=10)
-                        ax.set_ylabel('Parameters', fontsize=10)
+                        
+                        # 使用中文字体设置
+                        if available_fonts:
+                            font_prop = FontProperties()
+                            font_prop.set_family(available_fonts[0])
+                            ax.set_title(f'{name}\n缺失值热图', fontproperties=font_prop, fontsize=12)
+                            ax.set_xlabel('时间 (秒级精度)', fontproperties=font_prop, fontsize=10)
+                            ax.set_ylabel('参数', fontproperties=font_prop, fontsize=10)
+                        else:
+                            ax.set_title(f'{name}\n缺失值热图', fontsize=12)
+                            ax.set_xlabel('时间 (秒级精度)', fontsize=10)
+                            ax.set_ylabel('参数', fontsize=10)
                         
                         # 优化时间横坐标显示 - 只显示部分标签，格式为时:分:秒
                         n_ticks = min(6, len(data))  # 最多显示6个时间点
@@ -204,7 +324,14 @@ class WeatherDataEDA:
             
         # 创建图表
         fig, axes = plt.subplots(2, 1, figsize=(15, 10))
-        fig.suptitle('Visibility Time Series Analysis', fontsize=16, fontweight='bold')
+        
+        # 设置整体标题的中文字体
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            fig.suptitle('能见度时间序列分析', fontproperties=font_prop, fontsize=16, fontweight='bold')
+        else:
+            fig.suptitle('能见度时间序列分析', fontsize=16, fontweight='bold')
         
         # 获取能见度相关列
         vis_cols = [col for col in self.vis_data.columns if any(keyword in col.upper() 
@@ -221,9 +348,21 @@ class WeatherDataEDA:
                         ax1.plot(self.vis_data.index, data_to_plot, 
                                label=col, linewidth=1.5, alpha=0.8)
                 
-                ax1.set_title('Runway Visual Range (RVR) Trends', fontsize=14)
-                ax1.set_ylabel('RVR Distance (meters)', fontsize=12)
-                ax1.legend(fontsize=10)
+                # 使用中文字体设置RVR图表
+                if available_fonts:
+                    font_prop = FontProperties()
+                    font_prop.set_family(available_fonts[0])
+                    ax1.set_title('跑道视程距离 (RVR) 趋势', fontproperties=font_prop, fontsize=14)
+                    ax1.set_ylabel('RVR距离 (米)', fontproperties=font_prop, fontsize=12)
+                    # 设置图例字体
+                    legend = ax1.legend(fontsize=10)
+                    if legend:
+                        for text in legend.get_texts():
+                            text.set_fontproperties(font_prop)
+                else:
+                    ax1.set_title('跑道视程距离 (RVR) 趋势', fontsize=14)
+                    ax1.set_ylabel('RVR距离 (米)', fontsize=12)
+                    ax1.legend(fontsize=10)
                 ax1.grid(True, alpha=0.3)
                 
                 # 优化时间横坐标显示
@@ -244,10 +383,23 @@ class WeatherDataEDA:
                         ax2.plot(self.vis_data.index, data_to_plot, 
                                label=col, linewidth=1.5, alpha=0.8)
                 
-                ax2.set_title('Meteorological Optical Range (MOR) Trends', fontsize=14)
-                ax2.set_ylabel('MOR Distance (meters)', fontsize=12)
-                ax2.set_xlabel('Time (HH:MM:SS)', fontsize=12)
-                ax2.legend(fontsize=10)
+                # 使用中文字体设置MOR图表
+                if available_fonts:
+                    font_prop = FontProperties()
+                    font_prop.set_family(available_fonts[0])
+                    ax2.set_title('气象光学距离 (MOR) 趋势', fontproperties=font_prop, fontsize=14)
+                    ax2.set_ylabel('MOR距离 (米)', fontproperties=font_prop, fontsize=12)
+                    ax2.set_xlabel('时间 (时:分:秒)', fontproperties=font_prop, fontsize=12)
+                    # 设置图例字体
+                    legend = ax2.legend(fontsize=10)
+                    if legend:
+                        for text in legend.get_texts():
+                            text.set_fontproperties(font_prop)
+                else:
+                    ax2.set_title('气象光学距离 (MOR) 趋势', fontsize=14)
+                    ax2.set_ylabel('MOR距离 (米)', fontsize=12)
+                    ax2.set_xlabel('时间 (时:分:秒)', fontsize=12)
+                    ax2.legend(fontsize=10)
                 ax2.grid(True, alpha=0.3)
                 
                 # 优化时间横坐标显示
@@ -292,7 +444,14 @@ class WeatherDataEDA:
             能见度列名列表
         """
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
-        fig.suptitle('Visibility Data Distributions', fontsize=16, fontweight='bold')
+        
+        # 设置整体标题的中文字体
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            fig.suptitle('能见度数据分布分析', fontproperties=font_prop, fontsize=16, fontweight='bold')
+        else:
+            fig.suptitle('能见度数据分布分析', fontsize=16, fontweight='bold')
         
         for i, col in enumerate(vis_cols[:6]):
             row, col_idx = divmod(i, 3)
@@ -307,14 +466,27 @@ class WeatherDataEDA:
                 
                 # 添加统计线
                 ax.axvline(data_series.mean(), color='red', linestyle='--', 
-                          linewidth=2, label=f'Mean: {data_series.mean():.0f}')
+                          linewidth=2, label=f'均值: {data_series.mean():.0f}')
                 ax.axvline(data_series.median(), color='green', linestyle='-', 
-                          linewidth=2, label=f'Median: {data_series.median():.0f}')
+                          linewidth=2, label=f'中位数: {data_series.median():.0f}')
                 
-                ax.set_title(f'{col} Distribution')
-                ax.set_xlabel('Visibility (m)')
-                ax.set_ylabel('Frequency')
-                ax.legend()
+                # 使用中文字体设置
+                if available_fonts:
+                    font_prop = FontProperties()
+                    font_prop.set_family(available_fonts[0])
+                    ax.set_title(f'{col} 分布', fontproperties=font_prop)
+                    ax.set_xlabel('能见度 (米)', fontproperties=font_prop)
+                    ax.set_ylabel('频次', fontproperties=font_prop)
+                    # 设置图例字体
+                    legend = ax.legend()
+                    if legend:
+                        for text in legend.get_texts():
+                            text.set_fontproperties(font_prop)
+                else:
+                    ax.set_title(f'{col} 分布')
+                    ax.set_xlabel('能见度 (米)')
+                    ax.set_ylabel('频次')
+                    ax.legend()
                 ax.grid(True, alpha=0.3)
         
         # 删除空白子图
@@ -359,9 +531,17 @@ class WeatherDataEDA:
                    center=0, square=True, linewidths=0.5, 
                    cbar_kws={"shrink": 0.8}, fmt='.2f')
         
-        plt.title('Weather Parameters Correlation Matrix', fontsize=16, fontweight='bold', pad=20)
-        plt.xlabel('Weather Parameters', fontsize=12)
-        plt.ylabel('Weather Parameters', fontsize=12)
+        # 使用中文字体设置标题和标签
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            plt.title('气象参数相关性矩阵', fontproperties=font_prop, fontsize=16, fontweight='bold', pad=20)
+            plt.xlabel('气象参数', fontproperties=font_prop, fontsize=12)
+            plt.ylabel('气象参数', fontproperties=font_prop, fontsize=12)
+        else:
+            plt.title('气象参数相关性矩阵', fontsize=16, fontweight='bold', pad=20)
+            plt.xlabel('气象参数', fontsize=12)
+            plt.ylabel('气象参数', fontsize=12)
         
         # 旋转x轴标签以提高可读性
         plt.xticks(rotation=45, ha='right', fontsize=10)
@@ -467,7 +647,14 @@ class WeatherDataEDA:
         anomalies_summary = {}
         
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-        fig.suptitle('Anomaly Detection Using Z-Score Method', fontsize=16, fontweight='bold')
+        
+        # 设置整体标题的中文字体
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            fig.suptitle('基于Z-Score方法的异常值检测', fontproperties=font_prop, fontsize=16, fontweight='bold')
+        else:
+            fig.suptitle('基于Z-Score方法的异常值检测', fontsize=16, fontweight='bold')
         
         for i, col in enumerate(self.merged_data.columns[:6]):
             row, col_idx = divmod(i, 3)
@@ -490,15 +677,27 @@ class WeatherDataEDA:
             }
             
             # 绘制时间序列和异常点
-            ax.plot(data_series.index, data_series, 'b-', alpha=0.7, linewidth=0.8, label='Normal')
+            ax.plot(data_series.index, data_series, 'b-', alpha=0.7, linewidth=0.8, label='正常值')
             if anomaly_count > 0:
                 anomaly_data = data_series[anomalies]
                 ax.scatter(anomaly_data.index, anomaly_data, color='red', s=20, 
-                          label=f'Anomalies ({anomaly_count})', zorder=5)
+                          label=f'异常值 ({anomaly_count})', zorder=5)
             
-            ax.set_title(f'{col}\nAnomalies: {anomaly_count} ({anomaly_pct:.1f}%)')
-            ax.set_ylabel(col)
-            ax.legend()
+            # 使用中文字体设置
+            if available_fonts:
+                font_prop = FontProperties()
+                font_prop.set_family(available_fonts[0])
+                ax.set_title(f'{col}\n异常值: {anomaly_count} 个 ({anomaly_pct:.1f}%)', fontproperties=font_prop)
+                ax.set_ylabel(col, fontproperties=font_prop)
+                # 设置图例字体
+                legend = ax.legend()
+                if legend:
+                    for text in legend.get_texts():
+                        text.set_fontproperties(font_prop)
+            else:
+                ax.set_title(f'{col}\n异常值: {anomaly_count} 个 ({anomaly_pct:.1f}%)')
+                ax.set_ylabel(col)
+                ax.legend()
             ax.grid(True, alpha=0.3)
             
             # 格式化时间轴
@@ -821,36 +1020,82 @@ class VideoDataEDA:
             清晰度值列表
         """
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        fig.suptitle('Video Frame Quality Distribution Analysis', fontsize=14, fontweight='bold')
+        
+        # 设置整体标题的中文字体
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            fig.suptitle('视频帧图像质量分布分析', fontproperties=font_prop, fontsize=14, fontweight='bold')
+        else:
+            fig.suptitle('视频帧图像质量分布分析', fontsize=14, fontweight='bold')
         
         # 亮度分布
         axes[0].hist(brightness, bins=10, alpha=0.7, color='gold', edgecolor='black')
         axes[0].axvline(np.mean(brightness), color='red', linestyle='--', 
-                       label=f'Mean: {np.mean(brightness):.1f}')
-        axes[0].set_title('Brightness Distribution')
-        axes[0].set_xlabel('Brightness (0-255)')
-        axes[0].set_ylabel('Frequency')
-        axes[0].legend()
+                       label=f'均值: {np.mean(brightness):.1f}')
+        
+        # 使用中文字体设置亮度图
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            axes[0].set_title('亮度分布', fontproperties=font_prop)
+            axes[0].set_xlabel('亮度 (0-255)', fontproperties=font_prop)
+            axes[0].set_ylabel('频次', fontproperties=font_prop)
+            legend = axes[0].legend()
+            if legend:
+                for text in legend.get_texts():
+                    text.set_fontproperties(font_prop)
+        else:
+            axes[0].set_title('亮度分布')
+            axes[0].set_xlabel('亮度 (0-255)')
+            axes[0].set_ylabel('频次')
+            axes[0].legend()
         axes[0].grid(True, alpha=0.3)
         
         # 对比度分布
         axes[1].hist(contrast, bins=10, alpha=0.7, color='lightblue', edgecolor='black')
         axes[1].axvline(np.mean(contrast), color='red', linestyle='--',
-                       label=f'Mean: {np.mean(contrast):.1f}')
-        axes[1].set_title('Contrast Distribution')
-        axes[1].set_xlabel('Contrast (Std Dev)')
-        axes[1].set_ylabel('Frequency')
-        axes[1].legend()
+                       label=f'均值: {np.mean(contrast):.1f}')
+        
+        # 使用中文字体设置对比度图
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            axes[1].set_title('对比度分布', fontproperties=font_prop)
+            axes[1].set_xlabel('对比度 (标准差)', fontproperties=font_prop)
+            axes[1].set_ylabel('频次', fontproperties=font_prop)
+            legend = axes[1].legend()
+            if legend:
+                for text in legend.get_texts():
+                    text.set_fontproperties(font_prop)
+        else:
+            axes[1].set_title('对比度分布')
+            axes[1].set_xlabel('对比度 (标准差)')
+            axes[1].set_ylabel('频次')
+            axes[1].legend()
         axes[1].grid(True, alpha=0.3)
         
         # 清晰度分布
         axes[2].hist(blur, bins=10, alpha=0.7, color='lightgreen', edgecolor='black')
         axes[2].axvline(np.mean(blur), color='red', linestyle='--',
-                       label=f'Mean: {np.mean(blur):.1f}')
-        axes[2].set_title('Sharpness Distribution')
-        axes[2].set_xlabel('Laplacian Variance')
-        axes[2].set_ylabel('Frequency')
-        axes[2].legend()
+                       label=f'均值: {np.mean(blur):.1f}')
+        
+        # 使用中文字体设置清晰度图
+        if available_fonts:
+            font_prop = FontProperties()
+            font_prop.set_family(available_fonts[0])
+            axes[2].set_title('清晰度分布', fontproperties=font_prop)
+            axes[2].set_xlabel('拉普拉斯方差', fontproperties=font_prop)
+            axes[2].set_ylabel('频次', fontproperties=font_prop)
+            legend = axes[2].legend()
+            if legend:
+                for text in legend.get_texts():
+                    text.set_fontproperties(font_prop)
+        else:
+            axes[2].set_title('清晰度分布')
+            axes[2].set_xlabel('拉普拉斯方差')
+            axes[2].set_ylabel('频次')
+            axes[2].legend()
         axes[2].grid(True, alpha=0.3)
         
         plt.tight_layout()
