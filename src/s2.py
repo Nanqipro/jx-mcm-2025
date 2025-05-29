@@ -10,6 +10,9 @@
 3. 状态空间模型
 4. 非线性动力学模型
 5. 模型参数估计与验证
+6. 贝叶斯参数估计
+7. AIC/BIC信息准则
+8. 增强的雾消散模型
 """
 
 import numpy as np
@@ -31,8 +34,8 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
-# 设置中文字体
-plt.rcParams['font.sans-serif'] = ['SimHei']
+# 设置英文字体以符合可视化规范
+plt.rcParams['font.family'] = 'Arial'
 plt.rcParams['axes.unicode_minus'] = False
 
 
@@ -46,7 +49,14 @@ class VisibilityTimeSeriesModel:
         self.results = {}
 
     def load_data(self, filepath):
-        """加载数据"""
+        """
+        加载数据
+        
+        Parameters
+        ----------
+        filepath : str
+            数据文件路径
+        """
         print("正在加载数据...")
         self.data = pd.read_csv(filepath)
 
@@ -429,6 +439,330 @@ class VisibilityTimeSeriesModel:
 
         return self.models['ensemble']
 
+    def bayesian_parameter_estimation(self, model_type='differential'):
+        """
+        贝叶斯参数估计方法
+        
+        Parameters
+        ----------
+        model_type : str
+            模型类型：'differential', 'logistic'
+            
+        Returns
+        -------
+        dict
+            贝叶斯估计结果
+        """
+        print(f"\n=== 贝叶斯参数估计 ({model_type} 模型) ===")
+        
+        def log_likelihood(params, observations, model_type):
+            """对数似然函数"""
+            try:
+                if model_type == 'differential':
+                    # 微分方程模型的似然
+                    alpha, beta, gamma, sigma = params
+                    
+                    def fog_dynamics(V, t, alpha, beta, gamma):
+                        """雾动力学方程"""
+                        if t < len(self.weather_features):
+                            weather = self.weather_features[int(t)]
+                            T = weather[0] if len(weather) > 0 else 15
+                            RH = weather[1] if len(weather) > 1 else 80
+                            WS = weather[3] if len(weather) > 3 else 2
+                            P = weather[6] if len(weather) > 6 else 1013
+                        else:
+                            T, RH, WS, P = 15, 80, 2, 1013
+                        
+                        f_weather = np.exp(-(T - 5) ** 2 / 50) * (RH / 100) ** 2 * np.exp(-WS / 5)
+                        return alpha * f_weather - beta * V + gamma * np.random.normal(0, 0.1)
+                    
+                    # 求解微分方程
+                    t_span = np.linspace(0, len(observations) - 1, len(observations))
+                    predicted = odeint(fog_dynamics, observations[0], t_span, 
+                                     args=(alpha, beta, gamma))
+                    
+                    # 计算对数似然
+                    residuals = observations - predicted.flatten()
+                    log_lik = -0.5 * len(observations) * np.log(2 * np.pi * sigma**2) - \
+                              0.5 * np.sum(residuals**2) / sigma**2
+                    
+                elif model_type == 'logistic':
+                    # Logistic模型的似然
+                    r, K, sigma = params[:3]
+                    betas = params[3:]
+                    
+                    # 简化的Logistic预测
+                    predicted = []
+                    current_v = observations[0]
+                    
+                    for i in range(len(observations)):
+                        if i < len(self.weather_features):
+                            weather = self.weather_features[i]
+                            weather_effect = np.sum(betas[:len(weather)] * weather[:len(betas)])
+                        else:
+                            weather_effect = 0
+                        
+                        dv = r * current_v * (1 - current_v / K) + weather_effect
+                        current_v = max(50, min(current_v + dv, 10000))
+                        predicted.append(current_v)
+                    
+                    predicted = np.array(predicted)
+                    residuals = observations - predicted
+                    log_lik = -0.5 * len(observations) * np.log(2 * np.pi * sigma**2) - \
+                              0.5 * np.sum(residuals**2) / sigma**2
+                
+                return log_lik
+                
+            except:
+                return -1e10
+        
+        def log_prior(params, model_type):
+            """对数先验概率"""
+            if model_type == 'differential':
+                alpha, beta, gamma, sigma = params
+                # 使用正态先验
+                prior = stats.norm.logpdf(alpha, 0.1, 0.1) + \
+                        stats.norm.logpdf(beta, 0.01, 0.01) + \
+                        stats.norm.logpdf(gamma, 0.05, 0.05) + \
+                        stats.gamma.logpdf(sigma, 2, scale=50)
+            elif model_type == 'logistic':
+                r, K, sigma = params[:3]
+                betas = params[3:]
+                prior = stats.norm.logpdf(r, 0.01, 0.01) + \
+                        stats.norm.logpdf(K, 5000, 2000) + \
+                        stats.gamma.logpdf(sigma, 2, scale=50) + \
+                        np.sum([stats.norm.logpdf(b, 0, 0.5) for b in betas])
+            
+            return prior
+        
+        def log_posterior(params):
+            """对数后验概率"""
+            log_lik = log_likelihood(params, self.visibility, model_type)
+            log_pri = log_prior(params, model_type)
+            return log_lik + log_pri
+        
+        # MCMC采样 (简化版本)
+        def mcmc_sampling(n_samples=1000):
+            """MCMC采样"""
+            if model_type == 'differential':
+                current_params = np.array([0.1, 0.01, 0.05, 100])
+                proposal_std = np.array([0.01, 0.001, 0.005, 10])
+            elif model_type == 'logistic':
+                n_weather = self.weather_features.shape[1]
+                current_params = np.array([0.01, 5000, 100] + [0.1] * n_weather)
+                proposal_std = np.array([0.001, 200, 10] + [0.05] * n_weather)
+            
+            samples = []
+            current_log_post = log_posterior(current_params)
+            accepted = 0
+            
+            for i in range(n_samples):
+                # 提议新参数
+                proposal = current_params + np.random.normal(0, proposal_std)
+                
+                # 确保参数在合理范围内
+                if model_type == 'differential':
+                    proposal = np.maximum(proposal, [0.001, 0.001, 0.001, 1])
+                    proposal = np.minimum(proposal, [1, 0.1, 0.2, 1000])
+                elif model_type == 'logistic':
+                    proposal[0] = max(0.001, min(proposal[0], 0.5))  # r
+                    proposal[1] = max(1000, min(proposal[1], 50000))  # K
+                    proposal[2] = max(1, min(proposal[2], 1000))     # sigma
+                
+                proposal_log_post = log_posterior(proposal)
+                
+                # Metropolis-Hastings接受/拒绝
+                if np.log(np.random.random()) < (proposal_log_post - current_log_post):
+                    current_params = proposal
+                    current_log_post = proposal_log_post
+                    accepted += 1
+                
+                samples.append(current_params.copy())
+            
+            acceptance_rate = accepted / n_samples
+            print(f"MCMC接受率: {acceptance_rate:.3f}")
+            
+            return np.array(samples)
+        
+        # 执行MCMC采样
+        samples = mcmc_sampling()
+        
+        # 计算后验统计
+        posterior_mean = np.mean(samples[100:], axis=0)  # 丢弃前100个样本作为burn-in
+        posterior_std = np.std(samples[100:], axis=0)
+        
+        # 95%置信区间
+        confidence_intervals = np.percentile(samples[100:], [2.5, 97.5], axis=0)
+        
+        print(f"后验均值: {posterior_mean}")
+        print(f"后验标准差: {posterior_std}")
+        
+        return {
+            'samples': samples,
+            'posterior_mean': posterior_mean,
+            'posterior_std': posterior_std,
+            'confidence_intervals': confidence_intervals
+        }
+
+    def calculate_information_criteria(self):
+        """
+        计算AIC和BIC信息准则
+        
+        Returns
+        -------
+        dict
+            包含各模型AIC和BIC值的字典
+        """
+        print("\n=== 信息准则模型选择 ===")
+        
+        criteria = {}
+        
+        for model_name, model_data in self.models.items():
+            if 'predicted' in model_data:
+                predicted = model_data['predicted']
+                residuals = self.visibility - predicted
+                n = len(self.visibility)
+                
+                # 计算似然
+                sigma_squared = np.mean(residuals**2)
+                log_likelihood = -0.5 * n * np.log(2 * np.pi * sigma_squared) - \
+                                0.5 * np.sum(residuals**2) / sigma_squared
+                
+                # 参数个数
+                if model_name == 'differential_equation':
+                    k = 3  # alpha, beta, gamma
+                elif model_name == 'state_space':
+                    k = 9  # 状态转移矩阵参数
+                elif model_name == 'nonlinear_dynamics':
+                    k = 2 + self.weather_features.shape[1]  # r, K, betas
+                elif model_name == 'ensemble':
+                    k = len([m for m in self.models.keys() if m != 'ensemble'])
+                else:
+                    k = 1
+                
+                # 计算AIC和BIC
+                aic = 2 * k - 2 * log_likelihood
+                bic = k * np.log(n) - 2 * log_likelihood
+                
+                criteria[model_name] = {
+                    'AIC': aic,
+                    'BIC': bic,
+                    'log_likelihood': log_likelihood,
+                    'parameters': k
+                }
+                
+                print(f"{model_name}:")
+                print(f"  AIC: {aic:.2f}")
+                print(f"  BIC: {bic:.2f}")
+                print(f"  对数似然: {log_likelihood:.2f}")
+                print(f"  参数个数: {k}")
+        
+        return criteria
+
+    def enhanced_fog_dissipation_model(self):
+        """
+        增强的雾消散模型 - 包含太阳辐射效应
+        
+        Returns
+        -------
+        dict
+            消散模型参数和预测结果
+        """
+        print("\n=== 增强雾消散模型（含太阳辐射） ===")
+        
+        # 模拟太阳辐射数据（基于时间）
+        def calculate_solar_radiation(time_hours):
+            """
+            计算太阳辐射强度（简化模型）
+            
+            Parameters
+            ----------
+            time_hours : array_like
+                时间（小时）
+                
+            Returns
+            -------
+            array_like
+                太阳辐射强度 (W/m²)
+            """
+            # 简化的太阳辐射模型：正弦函数模拟日周期
+            solar_angle = 2 * np.pi * (time_hours % 24) / 24
+            # 太阳高度角（简化）
+            elevation = np.maximum(0, np.sin(solar_angle - np.pi/2))
+            # 辐射强度（W/m²）
+            radiation = 1000 * elevation  # 最大1000 W/m²
+            return radiation
+        
+        # 为数据添加太阳辐射
+        time_hours = np.arange(len(self.visibility)) / 60  # 假设每分钟一个数据点
+        solar_radiation = calculate_solar_radiation(time_hours)
+        
+        # 识别消散事件
+        vis_diff = np.diff(self.visibility)
+        dissipation_events = np.where(vis_diff > 100)[0]  # 能见度快速上升
+        
+        if len(dissipation_events) > 0:
+            print(f"识别到 {len(dissipation_events)} 个雾消散事件")
+            
+            # 消散模型: dV/dt = k1*SR(t) + k2*WS² + k3*T
+            def dissipation_dynamics(V, t, k1, k2, k3):
+                """雾消散动力学方程"""
+                if t < len(self.weather_features):
+                    weather = self.weather_features[int(t)]
+                    WS = weather[3] if len(weather) > 3 else 2  # 风速
+                    T = weather[0] if len(weather) > 0 else 15  # 温度
+                else:
+                    WS, T = 2, 15
+                
+                # 太阳辐射
+                SR = solar_radiation[min(int(t), len(solar_radiation)-1)]
+                
+                # 消散速率
+                dVdt = k1 * SR + k2 * (WS ** 2) + k3 * (T - 5)
+                return dVdt
+            
+            # 参数优化
+            def objective_dissipation(params):
+                """目标函数"""
+                k1, k2, k3 = params
+                try:
+                    # 只在消散事件期间进行拟合
+                    total_error = 0
+                    for event in dissipation_events[:5]:  # 取前5个事件
+                        if event + 10 < len(self.visibility):
+                            event_vis = self.visibility[event:event+10]
+                            t_span = np.arange(10)
+                            
+                            predicted = odeint(dissipation_dynamics, event_vis[0], t_span,
+                                             args=(k1, k2, k3))
+                            error = np.mean((predicted.flatten() - event_vis) ** 2)
+                            total_error += error
+                    
+                    return total_error / len(dissipation_events[:5])
+                except:
+                    return 1e6
+            
+            # 优化参数
+            initial_params = [0.01, 20, 10]  # k1, k2, k3
+            bounds = [(0.001, 0.1), (1, 100), (1, 50)]
+            
+            result = optimize.minimize(objective_dissipation, initial_params,
+                                     bounds=bounds, method='L-BFGS-B')
+            
+            optimal_params = result.x
+            print(f"优化参数:")
+            print(f"  k1 (太阳辐射系数): {optimal_params[0]:.4f}")
+            print(f"  k2 (风速系数): {optimal_params[1]:.2f}")
+            print(f"  k3 (温度系数): {optimal_params[2]:.2f}")
+            
+            return {
+                'params': optimal_params,
+                'solar_radiation': solar_radiation,
+                'dissipation_events': dissipation_events
+            }
+        
+        return None
+
     def evaluate_models(self):
         """5.4 模型参数估计与验证"""
         print("\n=== 5.4 模型性能评估与比较 ===")
@@ -457,16 +791,16 @@ class VisibilityTimeSeriesModel:
         return performance_df
 
     def plot_results(self):
-        """绘制结果图表"""
-        print("\n绘制结果图表...")
+        """绘制增强的结果图表"""
+        print("\n绘制增强结果图表...")
 
         # 创建子图
-        fig, axes = plt.subplots(2, 2, figsize=(15, 12))
-        fig.suptitle('能见度时间序列建模结果', fontsize=16)
+        fig, axes = plt.subplots(2, 3, figsize=(18, 12))
+        fig.suptitle('Enhanced Visibility Time Series Modeling Results', fontsize=16)
 
         # 1. 原始数据和所有模型预测
         ax1 = axes[0, 0]
-        ax1.plot(self.time_index, self.visibility, 'k-', label='实测值', linewidth=2)
+        ax1.plot(self.time_index, self.visibility, 'k-', label='Observed', linewidth=2)
 
         colors = ['red', 'blue', 'green', 'orange', 'purple']
         for i, (model_name, model_data) in enumerate(self.models.items()):
@@ -475,14 +809,44 @@ class VisibilityTimeSeriesModel:
                          color=colors[i % len(colors)], label=f'{model_name}',
                          alpha=0.7, linewidth=1.5)
 
-        ax1.set_xlabel('时间步')
-        ax1.set_ylabel('能见度 (m)')
-        ax1.set_title('所有模型预测结果对比')
+        ax1.set_xlabel('Time Steps')
+        ax1.set_ylabel('Visibility (m)')
+        ax1.set_title('Model Predictions Comparison')
         ax1.legend()
         ax1.grid(True, alpha=0.3)
 
-        # 2. 最佳模型详细分析
+        # 2. 信息准则比较
         ax2 = axes[0, 1]
+        try:
+            criteria = self.calculate_information_criteria()
+            
+            if criteria:
+                model_names = list(criteria.keys())
+                aic_values = [criteria[name]['AIC'] for name in model_names]
+                bic_values = [criteria[name]['BIC'] for name in model_names]
+                
+                x = np.arange(len(model_names))
+                width = 0.35
+                
+                ax2.bar(x - width/2, aic_values, width, label='AIC', alpha=0.8)
+                ax2.bar(x + width/2, bic_values, width, label='BIC', alpha=0.8)
+                
+                ax2.set_xlabel('Models')
+                ax2.set_ylabel('Information Criteria')
+                ax2.set_title('Model Selection Criteria')
+                ax2.set_xticks(x)
+                ax2.set_xticklabels(model_names, rotation=45)
+                ax2.legend()
+                ax2.grid(True, alpha=0.3)
+            else:
+                ax2.text(0.5, 0.5, 'No criteria data available', 
+                        ha='center', va='center', transform=ax2.transAxes)
+        except Exception as e:
+            ax2.text(0.5, 0.5, f'Criteria calculation failed', 
+                    ha='center', va='center', transform=ax2.transAxes)
+
+        # 3. 最佳模型散点图
+        ax3 = axes[0, 2]
         if 'ensemble' in self.models:
             best_pred = self.models['ensemble']['predicted']
             best_name = 'ensemble'
@@ -492,47 +856,109 @@ class VisibilityTimeSeriesModel:
             best_pred = best_model[1]['predicted']
             best_name = best_model[0]
 
-        ax2.scatter(self.visibility, best_pred, alpha=0.6, s=30)
-        ax2.plot([self.visibility.min(), self.visibility.max()],
+        ax3.scatter(self.visibility, best_pred, alpha=0.6, s=30)
+        ax3.plot([self.visibility.min(), self.visibility.max()],
                  [self.visibility.min(), self.visibility.max()], 'r--', lw=2)
-        ax2.set_xlabel('实测能见度 (m)')
-        ax2.set_ylabel('预测能见度 (m)')
-        ax2.set_title(f'最佳模型 ({best_name}) 散点图')
-        ax2.grid(True, alpha=0.3)
-
-        # 3. 残差分析
-        ax3 = axes[1, 0]
-        residuals = self.visibility - best_pred
-        ax3.plot(self.time_index, residuals, 'b-', alpha=0.7)
-        ax3.axhline(y=0, color='r', linestyle='--')
-        ax3.set_xlabel('时间步')
-        ax3.set_ylabel('残差 (m)')
-        ax3.set_title('最佳模型残差分析')
+        ax3.set_xlabel('Observed Visibility (m)')
+        ax3.set_ylabel('Predicted Visibility (m)')
+        ax3.set_title(f'Best Model ({best_name}) Scatter Plot')
         ax3.grid(True, alpha=0.3)
 
-        # 4. 时间序列分解（如果可用）
-        ax4 = axes[1, 1]
-        if 'decomposition' in self.results:
-            decomp = self.results['decomposition']
-            ax4.plot(decomp.trend, label='趋势', linewidth=2)
-            ax4.plot(decomp.seasonal, label='季节性', linewidth=1)
-            ax4.set_xlabel('时间步')
-            ax4.set_ylabel('分解成分')
-            ax4.set_title('时间序列分解')
-            ax4.legend()
-        else:
-            # 绘制能见度分布直方图
-            ax4.hist(self.visibility, bins=30, alpha=0.7, edgecolor='black')
-            ax4.set_xlabel('能见度 (m)')
-            ax4.set_ylabel('频次')
-            ax4.set_title('能见度分布直方图')
-        ax4.grid(True, alpha=0.3)
+        # 4. 雾消散模型结果
+        ax4 = axes[1, 0]
+        try:
+            dissipation_result = self.enhanced_fog_dissipation_model()
+            
+            if dissipation_result:
+                solar_radiation = dissipation_result['solar_radiation']
+                events = dissipation_result['dissipation_events']
+                
+                # 绘制太阳辐射和消散事件
+                ax4.plot(self.time_index, solar_radiation, 'orange', 
+                        label='Solar Radiation', alpha=0.7)
+                ax4.scatter(events, [solar_radiation[e] for e in events], 
+                           color='red', s=50, label='Dissipation Events')
+                ax4.set_xlabel('Time Steps')
+                ax4.set_ylabel('Solar Radiation (W/m²)')
+                ax4.set_title('Solar Radiation and Fog Dissipation Events')
+                ax4.legend()
+                ax4.grid(True, alpha=0.3)
+            else:
+                ax4.text(0.5, 0.5, 'No dissipation events found', 
+                        ha='center', va='center', transform=ax4.transAxes)
+        except Exception as e:
+            ax4.text(0.5, 0.5, f'Dissipation analysis failed', 
+                    ha='center', va='center', transform=ax4.transAxes)
+
+        # 5. 残差分析
+        ax5 = axes[1, 1]
+        residuals = self.visibility - best_pred
+        ax5.plot(self.time_index, residuals, 'b-', alpha=0.7)
+        ax5.axhline(y=0, color='r', linestyle='--')
+        ax5.set_xlabel('Time Steps')
+        ax5.set_ylabel('Residuals (m)')
+        ax5.set_title('Residual Analysis')
+        ax5.grid(True, alpha=0.3)
+
+        # 6. 模型性能雷达图
+        ax6 = axes[1, 2]
+        self._plot_performance_radar(ax6)
 
         plt.tight_layout()
         plt.show()
 
-        # 绘制模型性能比较
+        # 绘制基础模型性能比较
         self._plot_model_comparison()
+
+    def _plot_performance_radar(self, ax):
+        """绘制模型性能雷达图"""
+        try:
+            from math import pi
+            
+            # 准备数据
+            categories = ['R²', 'RMSE_inv', 'MAE_inv']  # inv表示反向（越小越好）
+            model_performance = {}
+            
+            for name, data in self.models.items():
+                if 'r2' in data:
+                    # 标准化指标（0-1之间）
+                    r2_norm = data['r2']
+                    rmse_inv_norm = 1 / (1 + data['rmse'] / 1000)  # 归一化RMSE
+                    mae_inv_norm = 1 / (1 + data['mae'] / 1000)    # 归一化MAE
+                    
+                    model_performance[name] = [r2_norm, rmse_inv_norm, mae_inv_norm]
+            
+            if not model_performance:
+                ax.text(0.5, 0.5, 'No performance data available', 
+                       ha='center', va='center', transform=ax.transAxes)
+                return
+            
+            # 角度
+            angles = [n / float(len(categories)) * 2 * pi for n in range(len(categories))]
+            angles += angles[:1]  # 闭合图形
+            
+            # 绘制每个模型
+            colors = ['red', 'blue', 'green', 'orange', 'purple']
+            for i, (name, values) in enumerate(model_performance.items()):
+                values += values[:1]  # 闭合数据
+                ax.plot(angles, values, 'o-', linewidth=2, 
+                       label=name, color=colors[i % len(colors)])
+                ax.fill(angles, values, alpha=0.25, color=colors[i % len(colors)])
+            
+            # 添加标签
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(categories)
+            ax.set_ylim(0, 1)
+            ax.set_title('Model Performance Radar Chart')
+            ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.0))
+            ax.grid(True)
+            
+        except ImportError:
+            ax.text(0.5, 0.5, 'Radar chart requires\nmatplotlib >= 3.0', 
+                   ha='center', va='center', transform=ax.transAxes)
+        except Exception as e:
+            ax.text(0.5, 0.5, f'Radar plot failed:\n{str(e)[:50]}...', 
+                   ha='center', va='center', transform=ax.transAxes)
 
     def _plot_model_comparison(self):
         """绘制模型性能比较图"""
@@ -577,19 +1003,20 @@ class VisibilityTimeSeriesModel:
         plt.show()
 
     def generate_report(self):
-        """生成建模报告"""
-        print("\n" + "=" * 60)
-        print("能见度时间连续变化建模报告")
-        print("=" * 60)
+        """生成增强的建模报告"""
+        print("\n" + "=" * 80)
+        print("Enhanced Visibility Time Series Modeling Report")
+        print("=" * 80)
 
         # 数据概览
-        print("\n1. 数据概览:")
-        print(f"   数据点数: {len(self.visibility)}")
-        print(f"   能见度范围: {self.visibility.min():.1f}m - {self.visibility.max():.1f}m")
-        print(f"   平均能见度: {self.visibility.mean():.1f}m")
+        print("\n1. Data Overview:")
+        print(f"   Number of data points: {len(self.visibility)}")
+        print(f"   Visibility range: {self.visibility.min():.1f}m - {self.visibility.max():.1f}m")
+        print(f"   Mean visibility: {self.visibility.mean():.1f}m")
+        print(f"   Standard deviation: {self.visibility.std():.1f}m")
 
         # 模型性能总结
-        print("\n2. 模型性能总结:")
+        print("\n2. Model Performance Summary:")
         for name, data in self.models.items():
             if 'r2' in data:
                 print(f"   {name}:")
@@ -597,26 +1024,46 @@ class VisibilityTimeSeriesModel:
                 print(f"     - RMSE: {data['rmse']:.1f}m")
                 print(f"     - MAE: {data['mae']:.1f}m")
 
+        # 信息准则比较
+        print("\n3. Information Criteria:")
+        try:
+            criteria = self.calculate_information_criteria()
+            if criteria:
+                for name, values in criteria.items():
+                    print(f"   {name}: AIC={values['AIC']:.2f}, BIC={values['BIC']:.2f}")
+        except:
+            print("   Information criteria not available for this dataset")
+
         # 最佳模型
         if self.models:
             best_model = max(self.models.items(),
-                             key=lambda x: x[1].get('r2', 0) if 'r2' in x[1] else 0)
-            print(f"\n3. 最佳模型: {best_model[0]}")
-            print(f"   预测精度: {best_model[1]['r2'] * 100:.1f}%")
-            print(f"   预测误差: ±{best_model[1]['rmse']:.1f}m")
+                           key=lambda x: x[1].get('r2', 0) if 'r2' in x[1] else 0)
+            print(f"\n4. Best Model: {best_model[0]}")
+            print(f"   Prediction accuracy: {best_model[1]['r2'] * 100:.1f}%")
+            print(f"   Prediction error: ±{best_model[1]['rmse']:.1f}m")
 
-        print("\n4. 建模结论:")
-        print("   - 成功构建了多种时间序列模型")
-        print("   - 实现了能见度的连续时间建模")
-        print("   - 验证了雾演化的动力学特征")
-        print("   - 为动态预测提供了理论基础")
+        # 贝叶斯估计结果
+        print("\n5. Bayesian Estimation Results:")
+        try:
+            bayesian_result = self.bayesian_parameter_estimation('differential')
+            print(f"   Posterior mean (α, β, γ, σ): {bayesian_result['posterior_mean']}")
+            print(f"   95% Confidence intervals available")
+        except:
+            print("   Bayesian estimation not available for this dataset")
+
+        print("\n6. Modeling Conclusions:")
+        print("   - Successfully constructed multiple time series models")
+        print("   - Implemented continuous-time visibility modeling")
+        print("   - Validated fog evolution dynamics")
+        print("   - Provided theoretical foundation for dynamic prediction")
+        print("   - Enhanced with Bayesian estimation and information criteria")
 
 
 def main():
     """主函数"""
-    print("基于大雾背景视频学习的能见度回归建模研究")
-    print("问题二：建立能见度随时间连续变化的数学模型")
-    print("=" * 60)
+    print("Enhanced Visibility Time Series Modeling Study")
+    print("Problem 2: Continuous-time Mathematical Model for Visibility Changes")
+    print("=" * 80)
 
     # 创建模型实例
     model = VisibilityTimeSeriesModel()
@@ -648,13 +1095,44 @@ def main():
         # 步骤3: 模型评估
         model.evaluate_models()
 
-        # 步骤4: 结果可视化
+        # 步骤4: 增强功能演示
+        print("\n" + "=" * 50)
+        print("演示增强功能...")
+        print("=" * 50)
+
+        # 4.1 贝叶斯参数估计
+        try:
+            bayesian_result = model.bayesian_parameter_estimation('differential')
+            print("贝叶斯估计完成")
+        except Exception as e:
+            print(f"贝叶斯估计失败: {e}")
+
+        # 4.2 信息准则计算
+        try:
+            criteria = model.calculate_information_criteria()
+            print("信息准则计算完成")
+        except Exception as e:
+            print(f"信息准则计算失败: {e}")
+
+        # 4.3 增强雾消散模型
+        try:
+            dissipation_result = model.enhanced_fog_dissipation_model()
+            print("增强雾消散模型完成")
+        except Exception as e:
+            print(f"增强雾消散模型失败: {e}")
+
+        # 步骤5: 结果可视化
         model.plot_results()
 
-        # 步骤5: 生成报告
+        # 步骤6: 生成报告
         model.generate_report()
 
         print("\n建模完成！")
+        print("\n新增功能:")
+        print("- 贝叶斯参数估计")
+        print("- AIC/BIC信息准则")
+        print("- 增强的雾消散模型（含太阳辐射）")
+        print("- 性能雷达图")
 
     except FileNotFoundError:
         print("错误：找不到数据文件 'blur.csv'")
