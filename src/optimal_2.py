@@ -33,6 +33,7 @@ from statsmodels.tsa.stattools import adfuller
 from statsmodels.tsa.seasonal import seasonal_decompose
 from filterpy.kalman import KalmanFilter
 import cv2
+from matplotlib.font_manager import FontProperties
 
 warnings.filterwarnings('ignore')
 
@@ -74,6 +75,11 @@ class ContinuousVisibilityModel:
         self.time_train = None
         self.time_test = None
         
+        # 创建结果保存目录
+        self.results_dir = "../results"
+        os.makedirs(self.results_dir, exist_ok=True)
+        print(f"📁 结果保存目录: {self.results_dir}")
+        
         # 模型配色方案
         self.colors = {
             'primary': '#2E86AB',
@@ -86,7 +92,89 @@ class ContinuousVisibilityModel:
             'residual': '#F4A261'
         }
         
+        # 强化中文字体设置
+        self._setup_chinese_fonts()
+        
         print("🚀 能见度连续变化数学模型初始化完成")
+
+    def _setup_chinese_fonts(self):
+        """设置中文字体支持"""
+        try:
+            # 尝试多种中文字体
+            font_candidates = [
+                'SimHei',           # 黑体
+                'Microsoft YaHei',  # 微软雅黑
+                'FangSong',         # 仿宋
+                'KaiTi',           # 楷体
+                'SimSun',          # 宋体
+                'DejaVu Sans'      # 备用英文字体
+            ]
+            
+            # 设置matplotlib的中文字体
+            for font in font_candidates:
+                try:
+                    plt.rcParams['font.sans-serif'] = [font] + plt.rcParams['font.sans-serif']
+                    break
+                except:
+                    continue
+            
+            # 确保负号正常显示
+            plt.rcParams['axes.unicode_minus'] = False
+            
+            # 设置默认字体大小
+            plt.rcParams['font.size'] = 10
+            plt.rcParams['axes.titlesize'] = 12
+            plt.rcParams['axes.labelsize'] = 10
+            plt.rcParams['xtick.labelsize'] = 9
+            plt.rcParams['ytick.labelsize'] = 9
+            plt.rcParams['legend.fontsize'] = 9
+            
+            # 测试中文显示
+            import matplotlib.font_manager as fm
+            available_fonts = [f.name for f in fm.fontManager.ttflist]
+            chinese_fonts = [f for f in available_fonts if any(cf in f for cf in ['SimHei', 'Microsoft', 'YaHei', 'FangSong', 'KaiTi', 'SimSun'])]
+            
+            if chinese_fonts:
+                print(f"✅ 检测到中文字体: {chinese_fonts[:3]}")  # 显示前3个
+                plt.rcParams['font.sans-serif'] = [chinese_fonts[0]] + plt.rcParams['font.sans-serif']
+                self.use_chinese = True
+                self.chinese_font = chinese_fonts[0]
+            else:
+                print("⚠️ 未检测到中文字体，将使用英文显示")
+                self.use_chinese = False
+                self.chinese_font = None
+                
+        except Exception as e:
+            print(f"⚠️ 中文字体设置警告: {e}")
+            plt.rcParams['font.sans-serif'] = ['DejaVu Sans']
+            self.use_chinese = False
+            self.chinese_font = None
+
+    def _get_font_prop(self):
+        """获取字体属性对象"""
+        font_prop = FontProperties()
+        if self.use_chinese and self.chinese_font:
+            font_prop.set_family(self.chinese_font)
+        return font_prop
+
+    def _get_labels(self, chinese_labels, english_labels):
+        """根据字体支持情况返回相应的标签"""
+        if self.use_chinese:
+            return chinese_labels
+        else:
+            return english_labels
+
+    def _set_labels_and_title(self, ax, title_cn, title_en, xlabel_cn, xlabel_en, ylabel_cn, ylabel_en):
+        """设置图表标题和轴标签"""
+        font_prop = self._get_font_prop()
+        if self.use_chinese:
+            ax.set_title(title_cn, fontproperties=font_prop)
+            ax.set_xlabel(xlabel_cn, fontproperties=font_prop)
+            ax.set_ylabel(ylabel_cn, fontproperties=font_prop)
+        else:
+            ax.set_title(title_en)
+            ax.set_xlabel(xlabel_en)
+            ax.set_ylabel(ylabel_en)
 
     def load_and_preprocess_data(self, filepath: str) -> bool:
         """
@@ -880,26 +968,32 @@ class ContinuousVisibilityModel:
         fig = plt.figure(figsize=(24, 18))
         gs = fig.add_gridspec(4, 6, hspace=0.3, wspace=0.3)
         
+        # 获取字体属性
+        font_prop = self._get_font_prop()
+        
         # 1. 原始数据时间序列（大图）
         ax1 = fig.add_subplot(gs[0, :3])
+        observed_label = self._get_labels('观测能见度', 'Observed Visibility')
         ax1.plot(self.time_index, self.visibility, 
-                color=self.colors['data'], linewidth=2, alpha=0.8, label='Observed Visibility')
+                color=self.colors['data'], linewidth=2, alpha=0.8, label=observed_label)
         ax1.fill_between(self.time_index, self.visibility, alpha=0.3, color=self.colors['data'])
         
         # 添加统计信息
-        ax1.text(0.02, 0.98, 
-                f'Mean: {np.mean(self.visibility):.1f}m\n'
-                f'Std: {np.std(self.visibility):.1f}m\n'
-                f'Range: {np.max(self.visibility)-np.min(self.visibility):.1f}m\n'
-                f'Fog Events (<1000m): {(self.visibility < 1000).sum()} ({(self.visibility < 1000).mean()*100:.1f}%)',
+        stats_text_cn = f'平均值: {np.mean(self.visibility):.1f}m\n标准差: {np.std(self.visibility):.1f}m\n范围: {np.max(self.visibility)-np.min(self.visibility):.1f}m\n雾事件 (<1000m): {(self.visibility < 1000).sum()} ({(self.visibility < 1000).mean()*100:.1f}%)'
+        stats_text_en = f'Mean: {np.mean(self.visibility):.1f}m\nStd: {np.std(self.visibility):.1f}m\nRange: {np.max(self.visibility)-np.min(self.visibility):.1f}m\nFog Events (<1000m): {(self.visibility < 1000).sum()} ({(self.visibility < 1000).mean()*100:.1f}%)'
+        stats_text = self._get_labels(stats_text_cn, stats_text_en)
+        
+        ax1.text(0.02, 0.98, stats_text,
                 transform=ax1.transAxes, fontsize=10,
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
-                verticalalignment='top')
+                verticalalignment='top', fontproperties=font_prop)
         
-        ax1.set_xlabel('Time Steps')
-        ax1.set_ylabel('Visibility (m)')
-        ax1.set_title('Original Visibility Time Series', fontsize=14, fontweight='bold')
-        ax1.legend()
+        # 设置标签
+        self._set_labels_and_title(ax1, '原始能见度时间序列', 'Original Visibility Time Series', 
+                                  '时间步长', 'Time Steps', '能见度 (m)', 'Visibility (m)')
+        
+        # 设置图例
+        legend = ax1.legend(prop=font_prop)
         ax1.grid(True, alpha=0.3)
         
         # 2. 数据分布分析
@@ -910,12 +1004,12 @@ class ContinuousVisibilityModel:
         # 拟合正态分布
         mu, sigma = stats.norm.fit(self.visibility)
         x = np.linspace(self.visibility.min(), self.visibility.max(), 100)
-        ax2.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2,
-                label=f'Normal Fit\nμ={mu:.1f}, σ={sigma:.1f}')
-        ax2.set_xlabel('Visibility (m)')
-        ax2.set_ylabel('Density')
-        ax2.set_title('Visibility Distribution')
-        ax2.legend()
+        normal_label = self._get_labels(f'正态拟合\nμ={mu:.1f}, σ={sigma:.1f}', f'Normal Fit\nμ={mu:.1f}, σ={sigma:.1f}')
+        ax2.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2, label=normal_label)
+        
+        self._set_labels_and_title(ax2, '能见度分布', 'Visibility Distribution', 
+                                  '能见度 (m)', 'Visibility (m)', '密度', 'Density')
+        ax2.legend(prop=font_prop)
         ax2.grid(True, alpha=0.3)
         
         # 3. 变化率分析
@@ -923,9 +1017,9 @@ class ContinuousVisibilityModel:
         vis_diff = np.diff(self.visibility)
         ax3.plot(self.time_index[1:], vis_diff, color=self.colors['warning'], alpha=0.7)
         ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-        ax3.set_xlabel('Time Steps')
-        ax3.set_ylabel('Change Rate (m/step)')
-        ax3.set_title('Visibility Change Rate')
+        
+        self._set_labels_and_title(ax3, '能见度变化率', 'Visibility Change Rate', 
+                                  '时间步长', 'Time Steps', '变化率 (m/步)', 'Change Rate (m/step)')
         ax3.grid(True, alpha=0.3)
         
         # 4. 模型性能比较
@@ -942,9 +1036,10 @@ class ContinuousVisibilityModel:
                           color=[self.colors['primary'], self.colors['secondary'], 
                                 self.colors['accent'], self.colors['success']][:len(model_names)])
             ax4.set_xticks(range(len(model_names)))
-            ax4.set_xticklabels(model_names, rotation=45, ha='right')
-            ax4.set_ylabel('R² Score')
-            ax4.set_title('Model Performance')
+            ax4.set_xticklabels(model_names, rotation=45, ha='right', fontproperties=font_prop)
+            
+            self._set_labels_and_title(ax4, '模型性能', 'Model Performance', 
+                                      '', '', 'R² 得分', 'R² Score')
             ax4.grid(True, alpha=0.3)
             
             # 添加数值标签
@@ -954,21 +1049,22 @@ class ContinuousVisibilityModel:
         
         # 5. 所有模型预测对比（大图）
         ax5 = fig.add_subplot(gs[1, :])
-        ax5.plot(self.time_index, self.visibility, 'k-', linewidth=3, alpha=0.8, label='Observed Data')
+        observed_label = self._get_labels('观测数据', 'Observed Data')
+        ax5.plot(self.time_index, self.visibility, 'k-', linewidth=3, alpha=0.8, label=observed_label)
         
         colors = [self.colors['primary'], self.colors['secondary'], 
                  self.colors['accent'], self.colors['success'], self.colors['warning']]
         
         for i, (name, model) in enumerate(self.models.items()):
             if model.get('success', False) and 'predicted' in model:
+                model_label = f"{model['name']} (R²={model['r2']:.3f})"
                 ax5.plot(self.time_index, model['predicted'], 
                         color=colors[i % len(colors)], linewidth=2, alpha=0.8,
-                        linestyle='--', label=f"{model['name']} (R²={model['r2']:.3f})")
+                        linestyle='--', label=model_label)
         
-        ax5.set_xlabel('Time Steps')
-        ax5.set_ylabel('Visibility (m)')
-        ax5.set_title('Continuous Mathematical Models Comparison', fontsize=14, fontweight='bold')
-        ax5.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+        self._set_labels_and_title(ax5, '连续数学模型对比', 'Continuous Mathematical Models Comparison', 
+                                  '时间步长', 'Time Steps', '能见度 (m)', 'Visibility (m)')
+        ax5.legend(bbox_to_anchor=(1.05, 1), loc='upper left', prop=font_prop)
         ax5.grid(True, alpha=0.3)
         
         # 6-9. 最佳模型详细分析
@@ -981,24 +1077,26 @@ class ContinuousVisibilityModel:
             ax6 = fig.add_subplot(gs[2, 0])
             ax6.plot(self.time_index, residuals, color=self.colors['residual'], alpha=0.7)
             ax6.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-            ax6.set_xlabel('Time Steps')
-            ax6.set_ylabel('Residuals (m)')
-            ax6.set_title(f'{best_model["name"][:15]}\nResidual Analysis')
+            
+            residual_title = self._get_labels(f'{best_model["name"][:15]}\n残差分析', f'{best_model["name"][:15]}\nResidual Analysis')
+            self._set_labels_and_title(ax6, residual_title, residual_title, 
+                                      '时间步长', 'Time Steps', '残差 (m)', 'Residuals (m)')
             ax6.grid(True, alpha=0.3)
             
             # 7. 残差vs预测值
             ax7 = fig.add_subplot(gs[2, 1])
             ax7.scatter(best_pred, residuals, alpha=0.6, color=self.colors['residual'], s=10)
             ax7.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-            ax7.set_xlabel('Predicted Values (m)')
-            ax7.set_ylabel('Residuals (m)')
-            ax7.set_title('Residuals vs Predictions')
+            
+            self._set_labels_and_title(ax7, '残差vs预测值', 'Residuals vs Predictions', 
+                                      '预测值 (m)', 'Predicted Values (m)', '残差 (m)', 'Residuals (m)')
             ax7.grid(True, alpha=0.3)
             
             # 8. Q-Q图
             ax8 = fig.add_subplot(gs[2, 2])
             stats.probplot(residuals, dist="norm", plot=ax8)
-            ax8.set_title('Normal Q-Q Plot')
+            qq_title = self._get_labels('正态Q-Q图', 'Normal Q-Q Plot')
+            ax8.set_title(qq_title, fontproperties=font_prop)
             ax8.grid(True, alpha=0.3)
             
             # 9. 预测vs实际散点图
@@ -1007,9 +1105,10 @@ class ContinuousVisibilityModel:
             min_val = min(self.visibility.min(), best_pred.min())
             max_val = max(self.visibility.max(), best_pred.max())
             ax9.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2)
-            ax9.set_xlabel('Observed Values (m)')
-            ax9.set_ylabel('Predicted Values (m)')
-            ax9.set_title(f'Prediction Accuracy\nR² = {best_model["r2"]:.4f}')
+            
+            accuracy_title = self._get_labels(f'预测精度\nR² = {best_model["r2"]:.4f}', f'Prediction Accuracy\nR² = {best_model["r2"]:.4f}')
+            self._set_labels_and_title(ax9, accuracy_title, accuracy_title, 
+                                      '观测值 (m)', 'Observed Values (m)', '预测值 (m)', 'Predicted Values (m)')
             ax9.grid(True, alpha=0.3)
             
             # 10. 连续变化过程分析
@@ -1019,37 +1118,50 @@ class ContinuousVisibilityModel:
             first_derivative = np.gradient(best_pred)
             second_derivative = np.gradient(first_derivative)
             
+            deriv1_label = self._get_labels('dV/dt', 'dV/dt')
+            deriv2_label = self._get_labels('d²V/dt²', 'd²V/dt²')
+            
             ax10.plot(self.time_index, first_derivative, 
-                     color=self.colors['accent'], linewidth=2, label='dV/dt')
+                     color=self.colors['accent'], linewidth=2, label=deriv1_label)
             ax10_twin = ax10.twinx()
             ax10_twin.plot(self.time_index, second_derivative, 
-                          color=self.colors['warning'], linewidth=2, label='d²V/dt²')
+                          color=self.colors['warning'], linewidth=2, label=deriv2_label)
             
-            ax10.set_xlabel('Time Steps')
-            ax10.set_ylabel('First Derivative', color=self.colors['accent'])
-            ax10_twin.set_ylabel('Second Derivative', color=self.colors['warning'])
-            ax10.set_title('Continuous Change Analysis')
+            continuity_title = self._get_labels('连续性变化分析', 'Continuous Change Analysis')
+            deriv1_ylabel = self._get_labels('一阶导数', 'First Derivative')
+            deriv2_ylabel = self._get_labels('二阶导数', 'Second Derivative')
+            
+            self._set_labels_and_title(ax10, continuity_title, continuity_title, 
+                                      '时间步长', 'Time Steps', deriv1_ylabel, deriv1_ylabel)
+            ax10_twin.set_ylabel(deriv2_ylabel, color=self.colors['warning'], fontproperties=font_prop)
             ax10.grid(True, alpha=0.3)
             
             # 11. 模型参数信息
             ax11 = fig.add_subplot(gs[2, 5])
             ax11.axis('off')
             
-            param_text = f"🏆 Best Model: {best_model['name']}\n\n"
-            param_text += f"📐 Mathematical Equation:\n{best_model.get('equation', 'N/A')}\n\n"
-            param_text += f"📊 Performance Metrics:\n"
+            best_model_text = self._get_labels('🏆 最佳模型', '🏆 Best Model')
+            equation_text = self._get_labels('📐 数学方程', '📐 Mathematical Equation')
+            performance_text = self._get_labels('📊 性能指标', '📊 Performance Metrics')
+            
+            param_text = f"{best_model_text}: {best_model['name']}\n\n"
+            param_text += f"{equation_text}:\n{best_model.get('equation', 'N/A')}\n\n"
+            param_text += f"{performance_text}:\n"
             param_text += f"• R² = {best_model['r2']:.6f}\n"
             param_text += f"• MAE = {best_model['mae']:.2f} m\n"
             param_text += f"• RMSE = {best_model['rmse']:.2f} m\n\n"
             
             if 'params' in best_model and 'param_names' in best_model:
-                param_text += f"🔧 Model Parameters:\n"
+                param_text_cn = '🔧 模型参数'
+                param_text_en = '🔧 Model Parameters'
+                param_title = self._get_labels(param_text_cn, param_text_en)
+                param_text += f"{param_title}:\n"
                 for name, value in zip(best_model['param_names'], best_model['params']):
                     param_text += f"• {name}: {value:.4f}\n"
             
             ax11.text(0.05, 0.95, param_text, transform=ax11.transAxes, fontsize=9,
                      bbox=dict(boxstyle="round,pad=0.5", facecolor=self.colors['primary'], alpha=0.1),
-                     verticalalignment='top', fontfamily='monospace')
+                     verticalalignment='top', fontfamily='monospace', fontproperties=font_prop)
         
         # 12. 模型性能统计表（底部）
         ax12 = fig.add_subplot(gs[3, :])
@@ -1057,17 +1169,21 @@ class ContinuousVisibilityModel:
         
         # 创建性能比较表
         table_data = []
-        headers = ['Model', 'R²', 'MAE (m)', 'RMSE (m)', 'Equation', 'Status']
+        if self.use_chinese:
+            headers = ['模型', 'R²', 'MAE (m)', 'RMSE (m)', '方程', '状态']
+        else:
+            headers = ['Model', 'R²', 'MAE (m)', 'RMSE (m)', 'Equation', 'Status']
         
         for name, model in self.models.items():
             if model.get('success', False):
+                status_text = self._get_labels('✅ 成功', '✅ Success')
                 table_data.append([
                     model['name'],
                     f"{model['r2']:.6f}",
                     f"{model['mae']:.2f}",
                     f"{model['rmse']:.2f}",
                     model.get('equation', 'N/A')[:30] + '...',
-                    '✅ Success'
+                    status_text
                 ])
         
         if table_data:
@@ -1088,8 +1204,9 @@ class ContinuousVisibilityModel:
                     else:
                         cell.set_facecolor('#f8f9fa' if i % 2 == 0 else 'white')
         
-        plt.suptitle('Continuous Visibility Mathematical Modeling - Comprehensive Analysis', 
-                    fontsize=16, fontweight='bold', y=0.98)
+        # 设置整体标题
+        title_text = self._get_labels('能见度连续变化数学建模 - 综合分析', 'Continuous Visibility Mathematical Modeling - Comprehensive Analysis')
+        plt.suptitle(title_text, fontsize=16, fontweight='bold', y=0.98, fontproperties=font_prop)
         plt.tight_layout()
         plt.show()
 
@@ -1718,27 +1835,36 @@ class ContinuousVisibilityModel:
 
     def _create_time_series_analysis_charts(self) -> None:
         """创建时间序列特征分析图表"""
+        # 强化中文字体设置
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+        
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-        fig.suptitle('能见度时间序列特征分析', fontsize=16, fontweight='bold')
+        
+        # 获取字体属性
+        font_prop = self._get_font_prop()
+        
+        # 设置整体标题
+        title_text = self._get_labels('能见度时间序列特征分析', 'Visibility Time Series Feature Analysis')
+        fig.suptitle(title_text, fontsize=16, fontweight='bold', fontproperties=font_prop)
         
         # 1. 原始时间序列
         ax1 = axes[0, 0]
         ax1.plot(self.time_index, self.visibility, 'b-', linewidth=2, alpha=0.8)
-        ax1.set_xlabel('时间步长')
-        ax1.set_ylabel('能见度 (m)')
-        ax1.set_title('原始能见度时间序列')
+        
+        # 设置标签和标题
+        self._set_labels_and_title(ax1, '原始能见度时间序列', 'Original Visibility Time Series',
+                                  '时间步长', 'Time Steps', '能见度 (m)', 'Visibility (m)')
         ax1.grid(True, alpha=0.3)
         
         # 添加统计信息
-        stats_text = f'观测点数: {len(self.visibility)}\n'
-        stats_text += f'平均值: {np.mean(self.visibility):.1f}m\n'
-        stats_text += f'标准差: {np.std(self.visibility):.1f}m\n'
-        stats_text += f'变异系数: {np.std(self.visibility)/np.mean(self.visibility):.3f}\n'
-        stats_text += f'范围: {np.min(self.visibility):.1f}-{np.max(self.visibility):.1f}m'
+        stats_text_cn = f'观测点数: {len(self.visibility)}\n平均值: {np.mean(self.visibility):.1f}m\n标准差: {np.std(self.visibility):.1f}m\n变异系数: {np.std(self.visibility)/np.mean(self.visibility):.3f}\n范围: {np.min(self.visibility):.1f}-{np.max(self.visibility):.1f}m'
+        stats_text_en = f'Data Points: {len(self.visibility)}\nMean: {np.mean(self.visibility):.1f}m\nStd: {np.std(self.visibility):.1f}m\nCV: {np.std(self.visibility)/np.mean(self.visibility):.3f}\nRange: {np.min(self.visibility):.1f}-{np.max(self.visibility):.1f}m'
+        stats_text = self._get_labels(stats_text_cn, stats_text_en)
         
         ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes,
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8),
-                verticalalignment='top', fontsize=9)
+                verticalalignment='top', fontsize=9, fontproperties=font_prop)
         
         # 2. 能见度分布
         ax2 = axes[0, 1]
@@ -1748,12 +1874,12 @@ class ContinuousVisibilityModel:
         # 拟合正态分布
         mu, sigma = stats.norm.fit(self.visibility)
         x = np.linspace(self.visibility.min(), self.visibility.max(), 100)
-        ax2.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2,
-                label=f'正态分布拟合\nμ={mu:.1f}, σ={sigma:.1f}')
-        ax2.set_xlabel('能见度 (m)')
-        ax2.set_ylabel('概率密度')
-        ax2.set_title('能见度分布特征')
-        ax2.legend()
+        normal_label = self._get_labels(f'正态分布拟合\nμ={mu:.1f}, σ={sigma:.1f}', f'Normal Distribution Fit\nμ={mu:.1f}, σ={sigma:.1f}')
+        ax2.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2, label=normal_label)
+        
+        self._set_labels_and_title(ax2, '能见度分布特征', 'Visibility Distribution', 
+                                  '能见度 (m)', 'Visibility (m)', '概率密度', 'Probability Density')
+        ax2.legend(prop=font_prop)
         ax2.grid(True, alpha=0.3)
         
         # 3. 变化率分析
@@ -1761,29 +1887,29 @@ class ContinuousVisibilityModel:
         vis_diff = np.diff(self.visibility)
         ax3.plot(self.time_index[1:], vis_diff, 'g-', alpha=0.7, linewidth=1)
         ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-        ax3.set_xlabel('时间步长')
-        ax3.set_ylabel('变化率 (m/步)')
-        ax3.set_title('能见度变化率时间序列')
+        
+        self._set_labels_and_title(ax3, '能见度变化率时间序列', 'Visibility Change Rate Time Series',
+                                  '时间步长', 'Time Steps', '变化率 (m/步)', 'Change Rate (m/step)')
         ax3.grid(True, alpha=0.3)
         
         # 添加变化率统计
-        change_stats = f'平均变化率: {np.mean(vis_diff):.2f}m/步\n'
-        change_stats += f'变化率标准差: {np.std(vis_diff):.2f}m/步\n'
-        change_stats += f'最大增幅: {np.max(vis_diff):.1f}m/步\n'
-        change_stats += f'最大降幅: {np.min(vis_diff):.1f}m/步'
+        change_stats_cn = f'平均变化率: {np.mean(vis_diff):.2f}m/步\n变化率标准差: {np.std(vis_diff):.2f}m/步\n最大增幅: {np.max(vis_diff):.1f}m/步\n最大降幅: {np.min(vis_diff):.1f}m/步'
+        change_stats_en = f'Mean Rate: {np.mean(vis_diff):.2f}m/step\nStd Rate: {np.std(vis_diff):.2f}m/step\nMax Increase: {np.max(vis_diff):.1f}m/step\nMax Decrease: {np.min(vis_diff):.1f}m/step'
+        change_stats = self._get_labels(change_stats_cn, change_stats_en)
         
         ax3.text(0.02, 0.98, change_stats, transform=ax3.transAxes,
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8),
-                verticalalignment='top', fontsize=9)
+                verticalalignment='top', fontsize=9, fontproperties=font_prop)
         
         # 4. 变化率分布
         ax4 = axes[1, 0]
         ax4.hist(vis_diff, bins=30, density=True, alpha=0.7, color='lightgreen', edgecolor='black')
-        ax4.axvline(x=0, color='red', linestyle='--', linewidth=2, label='零变化')
-        ax4.set_xlabel('变化率 (m/步)')
-        ax4.set_ylabel('概率密度')
-        ax4.set_title('能见度变化率分布')
-        ax4.legend()
+        zero_label = self._get_labels('零变化', 'Zero Change')
+        ax4.axvline(x=0, color='red', linestyle='--', linewidth=2, label=zero_label)
+        
+        self._set_labels_and_title(ax4, '能见度变化率分布', 'Visibility Change Rate Distribution',
+                                  '变化率 (m/步)', 'Change Rate (m/step)', '概率密度', 'Probability Density')
+        ax4.legend(prop=font_prop)
         ax4.grid(True, alpha=0.3)
         
         # 5. ADF检验结果
@@ -1792,21 +1918,36 @@ class ContinuousVisibilityModel:
         
         # 执行ADF检验
         adf_result = adfuller(self.visibility)
-        adf_text = 'ADF平稳性检验结果\n\n'
-        adf_text += f'ADF统计量: {adf_result[0]:.3f}\n'
-        adf_text += f'p值: {adf_result[1]:.3f}\n'
-        adf_text += f'临界值:\n'
+        
+        adf_text_cn = 'ADF平稳性检验结果\n\n'
+        adf_text_cn += f'ADF统计量: {adf_result[0]:.3f}\n'
+        adf_text_cn += f'p值: {adf_result[1]:.3f}\n'
+        adf_text_cn += f'临界值:\n'
         for key, value in adf_result[4].items():
-            adf_text += f'  {key}: {value:.3f}\n'
+            adf_text_cn += f'  {key}: {value:.3f}\n'
         
         if adf_result[1] > 0.05:
-            adf_text += '\n结论: 序列非平稳\n(p > 0.05, 不能拒绝原假设)'
+            adf_text_cn += '\n结论: 序列非平稳\n(p > 0.05, 不能拒绝原假设)'
         else:
-            adf_text += '\n结论: 序列平稳\n(p ≤ 0.05, 拒绝原假设)'
+            adf_text_cn += '\n结论: 序列平稳\n(p ≤ 0.05, 拒绝原假设)'
+        
+        adf_text_en = 'ADF Stationarity Test Results\n\n'
+        adf_text_en += f'ADF Statistic: {adf_result[0]:.3f}\n'
+        adf_text_en += f'p-value: {adf_result[1]:.3f}\n'
+        adf_text_en += f'Critical Values:\n'
+        for key, value in adf_result[4].items():
+            adf_text_en += f'  {key}: {value:.3f}\n'
+        
+        if adf_result[1] > 0.05:
+            adf_text_en += '\nConclusion: Non-stationary\n(p > 0.05, cannot reject null hypothesis)'
+        else:
+            adf_text_en += '\nConclusion: Stationary\n(p ≤ 0.05, reject null hypothesis)'
+        
+        adf_text = self._get_labels(adf_text_cn, adf_text_en)
         
         ax5.text(0.1, 0.9, adf_text, transform=ax5.transAxes, fontsize=10,
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow", alpha=0.8),
-                verticalalignment='top', fontfamily='monospace')
+                verticalalignment='top', fontfamily='monospace', fontproperties=font_prop)
         
         # 6. 自相关分析
         ax6 = axes[1, 2]
@@ -1817,14 +1958,21 @@ class ContinuousVisibilityModel:
         
         ax6.stem(lags, autocorr, linefmt='b-', markerfmt='bo', basefmt='k-')
         ax6.axhline(y=0, color='black', linestyle='-', alpha=0.5)
-        ax6.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label='显著性阈值')
-        ax6.set_xlabel('滞后期')
-        ax6.set_ylabel('自相关系数')
-        ax6.set_title('能见度自相关函数')
-        ax6.legend()
+        
+        threshold_label = self._get_labels('显著性阈值', 'Significance Threshold')
+        ax6.axhline(y=0.5, color='red', linestyle='--', alpha=0.5, label=threshold_label)
+        
+        self._set_labels_and_title(ax6, '能见度自相关函数', 'Visibility Autocorrelation Function',
+                                  '滞后期', 'Lag', '自相关系数', 'Autocorrelation Coefficient')
+        ax6.legend(prop=font_prop)
         ax6.grid(True, alpha=0.3)
         
         plt.tight_layout()
+        
+        # 保存图片
+        save_path = os.path.join(self.results_dir, "01_时间序列特征分析.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"📊 时间序列特征分析图表已保存: {save_path}")
         plt.show()
 
     def _create_model_performance_comparison(self) -> None:
@@ -1832,9 +1980,19 @@ class ContinuousVisibilityModel:
         if not self.models:
             print("⚠️ 没有可用的模型结果")
             return
+        
+        # 强化中文字体设置
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
             
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
-        fig.suptitle('连续变化数学模型性能对比分析', fontsize=16, fontweight='bold')
+        
+        # 获取字体属性
+        font_prop = self._get_font_prop()
+        
+        # 设置整体标题
+        title_text = self._get_labels('连续变化数学模型性能对比分析', 'Continuous Mathematical Models Performance Comparison')
+        fig.suptitle(title_text, fontsize=16, fontweight='bold', fontproperties=font_prop)
         
         # 准备数据
         model_names = []
@@ -1866,15 +2024,17 @@ class ContinuousVisibilityModel:
         x = np.arange(len(model_names))
         width = 0.35
         
-        bars1 = ax1.bar(x - width/2, train_r2, width, label='训练集', alpha=0.8, color='lightblue')
-        bars2 = ax1.bar(x + width/2, test_r2, width, label='测试集', alpha=0.8, color='lightcoral')
+        train_label = self._get_labels('训练集', 'Training Set')
+        test_label = self._get_labels('测试集', 'Test Set')
         
-        ax1.set_xlabel('模型类型')
-        ax1.set_ylabel('R² 得分')
-        ax1.set_title('模型决定系数(R²)对比')
+        bars1 = ax1.bar(x - width/2, train_r2, width, label=train_label, alpha=0.8, color='lightblue')
+        bars2 = ax1.bar(x + width/2, test_r2, width, label=test_label, alpha=0.8, color='lightcoral')
+        
+        self._set_labels_and_title(ax1, '模型决定系数(R²)对比', 'Model Coefficient of Determination (R²)',
+                                  '模型类型', 'Model Type', 'R² 得分', 'R² Score')
         ax1.set_xticks(x)
-        ax1.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
-        ax1.legend()
+        ax1.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right', fontproperties=font_prop)
+        ax1.legend(prop=font_prop)
         ax1.grid(True, alpha=0.3)
         
         # 添加数值标签
@@ -1887,28 +2047,26 @@ class ContinuousVisibilityModel:
         
         # 2. MAE对比
         ax2 = axes[0, 1]
-        bars3 = ax2.bar(x - width/2, train_mae, width, label='训练集', alpha=0.8, color='lightgreen')
-        bars4 = ax2.bar(x + width/2, test_mae, width, label='测试集', alpha=0.8, color='orange')
+        bars3 = ax2.bar(x - width/2, train_mae, width, label=train_label, alpha=0.8, color='lightgreen')
+        bars4 = ax2.bar(x + width/2, test_mae, width, label=test_label, alpha=0.8, color='orange')
         
-        ax2.set_xlabel('模型类型')
-        ax2.set_ylabel('平均绝对误差 (m)')
-        ax2.set_title('模型平均绝对误差(MAE)对比')
+        self._set_labels_and_title(ax2, '模型平均绝对误差(MAE)对比', 'Model Mean Absolute Error (MAE)',
+                                  '模型类型', 'Model Type', '平均绝对误差 (m)', 'Mean Absolute Error (m)')
         ax2.set_xticks(x)
-        ax2.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
-        ax2.legend()
+        ax2.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right', fontproperties=font_prop)
+        ax2.legend(prop=font_prop)
         ax2.grid(True, alpha=0.3)
         
         # 3. RMSE对比
         ax3 = axes[0, 2]
-        bars5 = ax3.bar(x - width/2, train_rmse, width, label='训练集', alpha=0.8, color='lightpink')
-        bars6 = ax3.bar(x + width/2, test_rmse, width, label='测试集', alpha=0.8, color='lightyellow')
+        bars5 = ax3.bar(x - width/2, train_rmse, width, label=train_label, alpha=0.8, color='lightpink')
+        bars6 = ax3.bar(x + width/2, test_rmse, width, label=test_label, alpha=0.8, color='lightyellow')
         
-        ax3.set_xlabel('模型类型')
-        ax3.set_ylabel('均方根误差 (m)')
-        ax3.set_title('模型均方根误差(RMSE)对比')
+        self._set_labels_and_title(ax3, '模型均方根误差(RMSE)对比', 'Model Root Mean Square Error (RMSE)',
+                                  '模型类型', 'Model Type', '均方根误差 (m)', 'Root Mean Square Error (m)')
         ax3.set_xticks(x)
-        ax3.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
-        ax3.legend()
+        ax3.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right', fontproperties=font_prop)
+        ax3.legend(prop=font_prop)
         ax3.grid(True, alpha=0.3)
         
         # 4. 泛化能力分析
@@ -1917,14 +2075,17 @@ class ContinuousVisibilityModel:
         colors = ['green' if gap < 0.05 else 'orange' if gap < 0.15 else 'red' for gap in generalization_gap]
         
         bars7 = ax4.bar(x, generalization_gap, color=colors, alpha=0.7)
-        ax4.set_xlabel('模型类型')
-        ax4.set_ylabel('泛化差距 (训练R² - 测试R²)')
-        ax4.set_title('模型泛化能力分析')
+        
+        good_threshold_label = self._get_labels('良好泛化阈值', 'Good Generalization Threshold')
+        overfitting_label = self._get_labels('过拟合警戒线', 'Overfitting Warning Line')
+        
+        self._set_labels_and_title(ax4, '模型泛化能力分析', 'Model Generalization Analysis',
+                                  '模型类型', 'Model Type', '泛化差距 (训练R² - 测试R²)', 'Generalization Gap (Train R² - Test R²)')
         ax4.set_xticks(x)
-        ax4.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right')
-        ax4.axhline(y=0.05, color='orange', linestyle='--', alpha=0.7, label='良好泛化阈值')
-        ax4.axhline(y=0.15, color='red', linestyle='--', alpha=0.7, label='过拟合警戒线')
-        ax4.legend()
+        ax4.set_xticklabels([name[:10] for name in model_names], rotation=45, ha='right', fontproperties=font_prop)
+        ax4.axhline(y=0.05, color='orange', linestyle='--', alpha=0.7, label=good_threshold_label)
+        ax4.axhline(y=0.15, color='red', linestyle='--', alpha=0.7, label=overfitting_label)
+        ax4.legend(prop=font_prop)
         ax4.grid(True, alpha=0.3)
         
         # 5. 综合性能雷达图
@@ -1937,7 +2098,9 @@ class ContinuousVisibilityModel:
             norm_gen = [1 - min(gap / 0.3, 1) for gap in generalization_gap]  # 泛化差距越小越好
             
             # 创建雷达图数据
-            categories = ['R²得分', 'MAE性能', 'RMSE性能', '泛化能力']
+            categories_cn = ['R²得分', 'MAE性能', 'RMSE性能', '泛化能力']
+            categories_en = ['R² Score', 'MAE Performance', 'RMSE Performance', 'Generalization']
+            categories = self._get_labels(categories_cn, categories_en)
             N = len(categories)
             
             angles = [n / float(N) * 2 * np.pi for n in range(N)]
@@ -1953,16 +2116,21 @@ class ContinuousVisibilityModel:
                 ax5.fill(angles, values, alpha=0.25)
             
             ax5.set_xticks(angles[:-1])
-            ax5.set_xticklabels(categories)
+            ax5.set_xticklabels(categories, fontproperties=font_prop)
             ax5.set_ylim(0, 1)
-            ax5.set_title('模型综合性能雷达图')
-            ax5.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0))
+            
+            radar_title = self._get_labels('模型综合性能雷达图', 'Model Comprehensive Performance Radar Chart')
+            ax5.set_title(radar_title, fontproperties=font_prop)
+            ax5.legend(loc='upper right', bbox_to_anchor=(1.2, 1.0), prop=font_prop)
         
         # 6. 模型数学表达式
         ax6 = axes[1, 2]
         ax6.axis('off')
         
-        eq_text = "数学模型方程式\n\n"
+        eq_title_cn = "数学模型方程式\n\n"
+        eq_title_en = "Mathematical Model Equations\n\n"
+        eq_text = self._get_labels(eq_title_cn, eq_title_en)
+        
         for i, (name, eq) in enumerate(zip(model_names, equations)):
             eq_text += f"{i+1}. {name}:\n"
             eq_text += f"   {eq}\n\n"
@@ -1972,6 +2140,11 @@ class ContinuousVisibilityModel:
                 verticalalignment='top', fontfamily='monospace')
         
         plt.tight_layout()
+        
+        # 保存图片
+        save_path = os.path.join(self.results_dir, "02_模型性能对比分析.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"📊 模型性能对比分析图表已保存: {save_path}")
         plt.show()
 
     def _create_state_space_detailed_analysis(self) -> None:
@@ -1987,6 +2160,10 @@ class ContinuousVisibilityModel:
             print("⚠️ 未找到成功的状态空间模型")
             return
         
+        # 强化中文字体设置
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+        
         fig, axes = plt.subplots(3, 3, figsize=(18, 15))
         fig.suptitle('状态空间模型详细分析 - 最优连续变化模型', fontsize=16, fontweight='bold')
         
@@ -1996,291 +2173,371 @@ class ContinuousVisibilityModel:
         # 1. 模型拟合效果
         ax1 = axes[0, 0]
         ax1.plot(self.time_index, self.visibility, 'k-', linewidth=2, label='观测值', alpha=0.8)
-        ax1.plot(self.time_index, predicted, 'r--', linewidth=2, label='模型预测', alpha=0.8)
-        ax1.set_xlabel('时间步长')
-        ax1.set_ylabel('能见度 (m)')
-        ax1.set_title('状态空间模型拟合效果')
-        ax1.legend()
+        ax1.plot(self.time_index, predicted, 'r-', linewidth=2, label='预测值', alpha=0.8)
+        ax1.set_xlabel('时间步长', fontproperties='SimHei')
+        ax1.set_ylabel('能见度 (m)', fontproperties='SimHei')
+        ax1.set_title('状态空间模型拟合效果', fontproperties='SimHei')
+        ax1.legend(prop={'family': 'SimHei'})
         ax1.grid(True, alpha=0.3)
         
         # 添加性能指标
-        r2_val = state_space_model.get('r2_test', state_space_model.get('r2', 0))
-        mae_val = state_space_model.get('mae_test', state_space_model.get('mae', 0))
-        rmse_val = state_space_model.get('rmse_test', state_space_model.get('rmse', 0))
+        r2 = state_space_model.get('r2', 0)
+        mae = state_space_model.get('mae', 0)
+        rmse = state_space_model.get('rmse', 0)
         
-        perf_text = f'性能指标:\nR² = {r2_val:.4f}\nMAE = {mae_val:.2f}m\nRMSE = {rmse_val:.2f}m'
-        ax1.text(0.02, 0.98, perf_text, transform=ax1.transAxes,
+        stats_text = f'模型性能指标\n'
+        stats_text += f'R² = {r2:.4f}\n'
+        stats_text += f'MAE = {mae:.2f}m\n'
+        stats_text += f'RMSE = {rmse:.2f}m'
+        
+        ax1.text(0.02, 0.98, stats_text, transform=ax1.transAxes,
                 bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8),
-                verticalalignment='top', fontsize=9)
+                verticalalignment='top', fontsize=9, fontproperties='SimHei')
         
-        # 2. 残差时间序列
+        # 2. 残差分析
         ax2 = axes[0, 1]
         ax2.plot(self.time_index, residuals, 'g-', alpha=0.7, linewidth=1)
         ax2.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-        ax2.set_xlabel('时间步长')
-        ax2.set_ylabel('残差 (m)')
-        ax2.set_title('残差时间序列')
+        ax2.axhline(y=np.std(residuals), color='red', linestyle='--', alpha=0.5, label='+1σ')
+        ax2.axhline(y=-np.std(residuals), color='red', linestyle='--', alpha=0.5, label='-1σ')
+        ax2.set_xlabel('时间步长', fontproperties='SimHei')
+        ax2.set_ylabel('残差 (m)', fontproperties='SimHei')
+        ax2.set_title('模型残差序列', fontproperties='SimHei')
+        ax2.legend(prop={'family': 'SimHei'})
         ax2.grid(True, alpha=0.3)
-        
-        # 添加残差统计
-        res_stats = f'残差统计:\n均值: {np.mean(residuals):.2f}m\n标准差: {np.std(residuals):.2f}m'
-        ax2.text(0.02, 0.98, res_stats, transform=ax2.transAxes,
-                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8),
-                verticalalignment='top', fontsize=9)
         
         # 3. 残差分布
         ax3 = axes[0, 2]
-        ax3.hist(residuals, bins=30, density=True, alpha=0.7, color='lightgreen', edgecolor='black')
+        ax3.hist(residuals, bins=25, density=True, alpha=0.7, color='lightgreen', edgecolor='black')
         
         # 拟合正态分布
-        mu_res, sigma_res = stats.norm.fit(residuals)
-        x_res = np.linspace(residuals.min(), residuals.max(), 100)
-        ax3.plot(x_res, stats.norm.pdf(x_res, mu_res, sigma_res), 'r-', linewidth=2,
-                label=f'正态拟合\nμ={mu_res:.1f}, σ={sigma_res:.1f}')
-        ax3.set_xlabel('残差 (m)')
-        ax3.set_ylabel('概率密度')
-        ax3.set_title('残差分布特征')
-        ax3.legend()
+        mu, sigma = stats.norm.fit(residuals)
+        x = np.linspace(residuals.min(), residuals.max(), 100)
+        ax3.plot(x, stats.norm.pdf(x, mu, sigma), 'r-', linewidth=2,
+                label=f'正态分布\nμ={mu:.2f}, σ={sigma:.2f}')
+        ax3.set_xlabel('残差值 (m)', fontproperties='SimHei')
+        ax3.set_ylabel('概率密度', fontproperties='SimHei')
+        ax3.set_title('残差分布分析', fontproperties='SimHei')
+        ax3.legend(prop={'family': 'SimHei'})
         ax3.grid(True, alpha=0.3)
         
-        # 4. 预测vs观测散点图
+        # 4. 状态变量演化
         ax4 = axes[1, 0]
-        ax4.scatter(self.visibility, predicted, alpha=0.6, color='blue', s=20)
-        min_val = min(self.visibility.min(), predicted.min())
-        max_val = max(self.visibility.max(), predicted.max())
-        ax4.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='完美预测线')
-        ax4.set_xlabel('观测值 (m)')
-        ax4.set_ylabel('预测值 (m)')
-        ax4.set_title(f'预测精度分析\nR² = {r2_val:.4f}')
-        ax4.legend()
+        # 如果有状态变量信息
+        if 'states' in state_space_model:
+            states = state_space_model['states']
+            for i, state in enumerate(states.T):
+                ax4.plot(self.time_index, state, label=f'状态变量 {i+1}', alpha=0.8)
+        else:
+            # 简化显示：仅显示预测轨迹的平滑度
+            smoothed = np.convolve(predicted, np.ones(5)/5, mode='same')
+            ax4.plot(self.time_index, predicted, 'b-', alpha=0.5, label='预测轨迹')
+            ax4.plot(self.time_index, smoothed, 'r-', linewidth=2, label='平滑轨迹')
+        
+        ax4.set_xlabel('时间步长', fontproperties='SimHei')
+        ax4.set_ylabel('状态值', fontproperties='SimHei')
+        ax4.set_title('状态空间演化', fontproperties='SimHei')
+        ax4.legend(prop={'family': 'SimHei'})
         ax4.grid(True, alpha=0.3)
         
-        # 5. 残差vs预测值
+        # 5. 预测精度随时间变化
         ax5 = axes[1, 1]
-        ax5.scatter(predicted, residuals, alpha=0.6, color='green', s=20)
-        ax5.axhline(y=0, color='black', linestyle='--', alpha=0.5)
-        ax5.set_xlabel('预测值 (m)')
-        ax5.set_ylabel('残差 (m)')
-        ax5.set_title('残差vs预测值')
+        # 计算滑动窗口的预测精度
+        window_size = min(50, len(predicted) // 10)
+        rolling_mae = []
+        rolling_rmse = []
+        rolling_indices = []
+        
+        for i in range(window_size, len(predicted)):
+            window_residuals = residuals[i-window_size:i]
+            rolling_mae.append(np.mean(np.abs(window_residuals)))
+            rolling_rmse.append(np.sqrt(np.mean(window_residuals**2)))
+            rolling_indices.append(i)
+        
+        ax5.plot(rolling_indices, rolling_mae, 'b-', label='滑动MAE', linewidth=2)
+        ax5.plot(rolling_indices, rolling_rmse, 'r-', label='滑动RMSE', linewidth=2)
+        ax5.set_xlabel('时间步长', fontproperties='SimHei')
+        ax5.set_ylabel('预测误差 (m)', fontproperties='SimHei')
+        ax5.set_title('预测精度时变特性', fontproperties='SimHei')
+        ax5.legend(prop={'family': 'SimHei'})
         ax5.grid(True, alpha=0.3)
         
-        # 6. Q-Q图
+        # 6. 观测值vs预测值散点图
         ax6 = axes[1, 2]
-        stats.probplot(residuals, dist="norm", plot=ax6)
-        ax6.set_title('残差正态Q-Q图')
+        ax6.scatter(self.visibility, predicted, alpha=0.6, s=20, c='blue')
+        
+        # 添加理想线
+        min_val = min(self.visibility.min(), predicted.min())
+        max_val = max(self.visibility.max(), predicted.max())
+        ax6.plot([min_val, max_val], [min_val, max_val], 'r--', linewidth=2, label='理想预测线')
+        
+        ax6.set_xlabel('观测值 (m)', fontproperties='SimHei')
+        ax6.set_ylabel('预测值 (m)', fontproperties='SimHei')
+        ax6.set_title('观测值 vs 预测值', fontproperties='SimHei')
+        ax6.legend(prop={'family': 'SimHei'})
         ax6.grid(True, alpha=0.3)
         
-        # 7. 状态演化方程可视化
+        # 7. 模型参数信息
         ax7 = axes[2, 0]
         ax7.axis('off')
         
-        # 状态空间模型方程
-        eq_text = "状态空间模型数学表达式\n\n"
-        eq_text += "状态方程:\n"
-        eq_text += "x[k+1] = F·x[k] + w[k]\n\n"
-        eq_text += "其中:\n"
-        eq_text += "x[k] = [V[k], V'[k], V''[k]]ᵀ\n\n"
-        eq_text += "状态转移矩阵 F:\n"
-        eq_text += "F = [1.0  1.0  0.5]\n"
-        eq_text += "    [0.0  1.0  1.0]\n"
-        eq_text += "    [0.0  0.0  1.0]\n\n"
-        eq_text += "观测方程:\n"
-        eq_text += "y[k] = H·x[k] + v[k]\n"
-        eq_text += "H = [1.0, 0.0, 0.0]\n\n"
-        eq_text += "核心演化方程:\n"
-        eq_text += "V[k+1] = V[k] + V'[k] + 0.5·V''[k]"
+        param_text = "状态空间模型参数\n\n"
+        param_text += f"模型名称: {state_space_model.get('name', 'N/A')}\n"
+        param_text += f"数学表达式:\n{state_space_model.get('equation', 'N/A')}\n\n"
+        param_text += f"性能指标:\n"
+        param_text += f"• R² 得分: {r2:.4f}\n"
+        param_text += f"• MAE: {mae:.2f} m\n"
+        param_text += f"• RMSE: {rmse:.2f} m\n"
+        param_text += f"• 数据点数: {len(predicted)}\n"
+        param_text += f"• 残差标准差: {np.std(residuals):.2f} m"
         
-        ax7.text(0.05, 0.95, eq_text, transform=ax7.transAxes, fontsize=9,
+        ax7.text(0.05, 0.95, param_text, transform=ax7.transAxes, fontsize=10,
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="lightyellow", alpha=0.8),
                 verticalalignment='top', fontfamily='monospace')
         
-        # 8. 卡尔曼滤波过程
+        # 8. 连续性分析
         ax8 = axes[2, 1]
-        if 'kalman_states' in state_space_model:
-            states = state_space_model['kalman_states']
-            velocities = states[:, 1] if states.shape[1] > 1 else np.gradient(predicted)
-            accelerations = states[:, 2] if states.shape[1] > 2 else np.gradient(velocities)
-        else:
-            velocities = np.gradient(predicted)
-            accelerations = np.gradient(velocities)
+        # 计算一阶和二阶差分
+        first_diff = np.diff(predicted)
+        second_diff = np.diff(first_diff)
         
-        ax8.plot(self.time_index, velocities, 'b-', linewidth=2, label="速度 (dV/dt)")
-        ax8_twin = ax8.twinx()
-        ax8_twin.plot(self.time_index, accelerations, 'r-', linewidth=2, label="加速度 (d²V/dt²)")
-        
-        ax8.set_xlabel('时间步长')
-        ax8.set_ylabel('速度 (m/步)', color='blue')
-        ax8_twin.set_ylabel('加速度 (m/步²)', color='red')
-        ax8.set_title('状态演化过程分析')
+        ax8.plot(self.time_index[1:], first_diff, 'b-', label='一阶导数(变化率)', alpha=0.8)
+        ax8.plot(self.time_index[2:], second_diff, 'r-', label='二阶导数(加速度)', alpha=0.8)
+        ax8.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        ax8.set_xlabel('时间步长', fontproperties='SimHei')
+        ax8.set_ylabel('导数值', fontproperties='SimHei')
+        ax8.set_title('连续性变化分析', fontproperties='SimHei')
+        ax8.legend(prop={'family': 'SimHei'})
         ax8.grid(True, alpha=0.3)
         
-        # 添加图例
-        lines1, labels1 = ax8.get_legend_handles_labels()
-        lines2, labels2 = ax8_twin.get_legend_handles_labels()
-        ax8.legend(lines1 + lines2, labels1 + labels2, loc='upper right')
-        
-        # 9. 模型参数和不确定性
+        # 9. 稳定性分析
         ax9 = axes[2, 2]
-        ax9.axis('off')
+        # 计算局部方差
+        window_size = min(20, len(predicted) // 5)
+        local_variance = []
+        variance_indices = []
         
-        param_text = "模型参数配置\n\n"
-        param_text += "过程噪声协方差矩阵 Q:\n"
-        param_text += "Q = diag(25, 100, 100)\n\n"
-        param_text += "观测噪声方差 R:\n"
-        param_text += "R = 50.0\n\n"
-        param_text += "不确定性分析:\n"
-        param_text += f"• 过程不确定性: ±{np.sqrt(25):.1f}m\n"
-        param_text += f"• 观测不确定性: ±{np.sqrt(50):.1f}m\n"
-        param_text += f"• 预测RMSE: {rmse_val:.1f}m\n\n"
-        param_text += "物理解释:\n"
-        param_text += "• V: 能见度当前状态\n"
-        param_text += "• V': 能见度变化速率\n"
-        param_text += "• V'': 能见度变化加速度"
+        for i in range(window_size, len(predicted)):
+            window_data = predicted[i-window_size:i]
+            local_variance.append(np.var(window_data))
+            variance_indices.append(i)
         
-        ax9.text(0.05, 0.95, param_text, transform=ax9.transAxes, fontsize=9,
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightcyan", alpha=0.8),
-                verticalalignment='top', fontfamily='monospace')
+        ax9.plot(variance_indices, local_variance, 'g-', linewidth=2)
+        ax9.set_xlabel('时间步长', fontproperties='SimHei')
+        ax9.set_ylabel('局部方差', fontproperties='SimHei')
+        ax9.set_title('模型稳定性分析', fontproperties='SimHei')
+        ax9.grid(True, alpha=0.3)
+        
+        # 添加稳定性评价
+        avg_variance = np.mean(local_variance)
+        stability_text = f'平均局部方差: {avg_variance:.2f}\n'
+        if avg_variance < np.var(self.visibility) * 0.1:
+            stability_text += '评价: 高度稳定'
+        elif avg_variance < np.var(self.visibility) * 0.3:
+            stability_text += '评价: 中等稳定'
+        else:
+            stability_text += '评价: 稳定性一般'
+        
+        ax9.text(0.02, 0.98, stability_text, transform=ax9.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8),
+                verticalalignment='top', fontsize=9, fontproperties='SimHei')
         
         plt.tight_layout()
+        
+        # 保存图片
+        save_path = os.path.join(self.results_dir, "03_状态空间模型详细分析.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"📊 状态空间模型详细分析图表已保存: {save_path}")
         plt.show()
 
     def _create_continuous_dynamics_analysis(self) -> None:
         """创建连续变化动力学分析图表"""
+        # 强化中文字体设置
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
+        
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
         fig.suptitle('能见度连续变化动力学分析', fontsize=16, fontweight='bold')
         
-        # 获取最佳模型的预测结果
-        best_model = self._get_best_model()
-        if not best_model:
-            print("⚠️ 没有可用的最佳模型")
-            return
-        
-        predicted = best_model['predicted']
-        
-        # 计算各阶导数
-        first_derivative = np.gradient(self.visibility)
-        second_derivative = np.gradient(first_derivative)
-        pred_first_derivative = np.gradient(predicted)
-        pred_second_derivative = np.gradient(pred_first_derivative)
-        
-        # 1. 能见度变化速率分析
+        # 1. 原始时间序列与趋势
         ax1 = axes[0, 0]
-        ax1.plot(self.time_index, first_derivative, 'b-', linewidth=2, alpha=0.7, label='观测数据')
-        ax1.plot(self.time_index, pred_first_derivative, 'r--', linewidth=2, alpha=0.8, label='模型预测')
-        ax1.axhline(y=0, color='black', linestyle=':', alpha=0.5)
-        ax1.set_xlabel('时间步长')
-        ax1.set_ylabel('变化速率 (m/步)')
-        ax1.set_title('能见度变化速率 (dV/dt)')
-        ax1.legend()
+        ax1.plot(self.time_index, self.visibility, 'b-', alpha=0.6, linewidth=1, label='原始数据')
+        
+        # 添加趋势线（移动平均）
+        window = min(50, len(self.visibility) // 10)
+        trend = np.convolve(self.visibility, np.ones(window)/window, mode='same')
+        ax1.plot(self.time_index, trend, 'r-', linewidth=3, label=f'{window}点移动平均')
+        
+        ax1.set_xlabel('时间步长', fontproperties='SimHei')
+        ax1.set_ylabel('能见度 (m)', fontproperties='SimHei')
+        ax1.set_title('能见度时间序列与长期趋势', fontproperties='SimHei')
+        ax1.legend(prop={'family': 'SimHei'})
         ax1.grid(True, alpha=0.3)
         
-        # 2. 能见度变化加速度分析
+        # 添加统计信息
+        trend_slope = np.polyfit(self.time_index, self.visibility, 1)[0]
+        trend_text = f'趋势分析\n'
+        trend_text += f'变化斜率: {trend_slope:.3f} m/步\n'
+        trend_text += f'总体变化: {trend_slope * len(self.visibility):.1f} m\n'
+        if abs(trend_slope) < 0.01:
+            trend_text += '趋势: 基本稳定'
+        elif trend_slope > 0:
+            trend_text += '趋势: 上升'
+        else:
+            trend_text += '趋势: 下降'
+        
+        ax1.text(0.02, 0.98, trend_text, transform=ax1.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightblue", alpha=0.8),
+                verticalalignment='top', fontsize=9, fontproperties='SimHei')
+        
+        # 2. 一阶差分（变化率）
         ax2 = axes[0, 1]
-        ax2.plot(self.time_index, second_derivative, 'g-', linewidth=2, alpha=0.7, label='观测数据')
-        ax2.plot(self.time_index, pred_second_derivative, 'orange', linestyle='--', linewidth=2, alpha=0.8, label='模型预测')
-        ax2.axhline(y=0, color='black', linestyle=':', alpha=0.5)
-        ax2.set_xlabel('时间步长')
-        ax2.set_ylabel('变化加速度 (m/步²)')
-        ax2.set_title('能见度变化加速度 (d²V/dt²)')
-        ax2.legend()
+        first_diff = np.diff(self.visibility)
+        ax2.plot(self.time_index[1:], first_diff, 'g-', alpha=0.7, linewidth=1)
+        ax2.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        
+        # 添加变化率的移动平均
+        diff_trend = np.convolve(first_diff, np.ones(min(20, len(first_diff)//5))/min(20, len(first_diff)//5), mode='same')
+        ax2.plot(self.time_index[1:], diff_trend, 'r-', linewidth=2, label='变化率趋势')
+        
+        ax2.set_xlabel('时间步长', fontproperties='SimHei')
+        ax2.set_ylabel('变化率 (m/步)', fontproperties='SimHei')
+        ax2.set_title('能见度一阶变化率', fontproperties='SimHei')
+        ax2.legend(prop={'family': 'SimHei'})
         ax2.grid(True, alpha=0.3)
         
-        # 3. 相空间图 (V vs dV/dt)
+        # 变化率统计
+        change_stats = f'变化率统计\n'
+        change_stats += f'均值: {np.mean(first_diff):.3f} m/步\n'
+        change_stats += f'标准差: {np.std(first_diff):.3f} m/步\n'
+        change_stats += f'最大变化: {np.max(np.abs(first_diff)):.1f} m/步\n'
+        change_stats += f'变化次数: {np.sum(np.abs(first_diff) > np.std(first_diff))} 次'
+        
+        ax2.text(0.02, 0.98, change_stats, transform=ax2.transAxes,
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgreen", alpha=0.8),
+                verticalalignment='top', fontsize=9, fontproperties='SimHei')
+        
+        # 3. 二阶差分（加速度）
         ax3 = axes[0, 2]
-        ax3.scatter(self.visibility, first_derivative, c=self.time_index, cmap='viridis', 
-                   alpha=0.6, s=20, label='观测数据')
-        ax3.plot(predicted, pred_first_derivative, 'r-', linewidth=2, alpha=0.8, label='模型轨迹')
-        ax3.set_xlabel('能见度 (m)')
-        ax3.set_ylabel('变化速率 (m/步)')
-        ax3.set_title('相空间图 (能见度 vs 变化速率)')
-        ax3.legend()
+        second_diff = np.diff(first_diff)
+        ax3.plot(self.time_index[2:], second_diff, 'purple', alpha=0.7, linewidth=1)
+        ax3.axhline(y=0, color='black', linestyle='--', alpha=0.5)
+        
+        # 加速度的移动平均
+        acc_trend = np.convolve(second_diff, np.ones(min(15, len(second_diff)//5))/min(15, len(second_diff)//5), mode='same')
+        ax3.plot(self.time_index[2:], acc_trend, 'orange', linewidth=2, label='加速度趋势')
+        
+        ax3.set_xlabel('时间步长', fontproperties='SimHei')
+        ax3.set_ylabel('加速度 (m/步²)', fontproperties='SimHei')
+        ax3.set_title('能见度二阶变化率(加速度)', fontproperties='SimHei')
+        ax3.legend(prop={'family': 'SimHei'})
         ax3.grid(True, alpha=0.3)
         
-        # 添加颜色条
-        cb = plt.colorbar(ax3.collections[0], ax=ax3)
-        cb.set_label('时间步长')
-        
-        # 4. 动力学特征统计
+        # 4. 变化幅度分布
         ax4 = axes[1, 0]
+        change_magnitudes = np.abs(first_diff)
+        ax4.hist(change_magnitudes, bins=25, density=True, alpha=0.7, color='lightcoral', edgecolor='black')
         
-        # 计算动力学特征
-        velocity_ranges = ['减速(<-100)', '缓减(-100,-10)', '稳定(-10,10)', '缓增(10,100)', '加速(>100)']
-        velocity_counts = [
-            np.sum(first_derivative < -100),
-            np.sum((first_derivative >= -100) & (first_derivative < -10)),
-            np.sum((first_derivative >= -10) & (first_derivative <= 10)),
-            np.sum((first_derivative > 10) & (first_derivative <= 100)),
-            np.sum(first_derivative > 100)
-        ]
+        # 拟合指数分布
+        from scipy import stats
+        exp_params = stats.expon.fit(change_magnitudes)
+        x_exp = np.linspace(0, change_magnitudes.max(), 100)
+        ax4.plot(x_exp, stats.expon.pdf(x_exp, *exp_params), 'r-', linewidth=2,
+                label=f'指数分布拟合\nλ={1/exp_params[1]:.3f}')
         
-        colors = ['red', 'orange', 'yellow', 'lightgreen', 'green']
-        bars = ax4.bar(velocity_ranges, velocity_counts, color=colors, alpha=0.7)
-        ax4.set_xlabel('变化速率区间 (m/步)')
-        ax4.set_ylabel('时间步数')
-        ax4.set_title('能见度变化速率分布统计')
-        ax4.tick_params(axis='x', rotation=45)
+        ax4.set_xlabel('变化幅度 |dV/dt| (m/步)', fontproperties='SimHei')
+        ax4.set_ylabel('概率密度', fontproperties='SimHei')
+        ax4.set_title('变化幅度分布特征', fontproperties='SimHei')
+        ax4.legend(prop={'family': 'SimHei'})
         ax4.grid(True, alpha=0.3)
         
-        # 添加百分比标签
-        total_points = len(first_derivative)
-        for bar, count in zip(bars, velocity_counts):
-            percentage = count / total_points * 100
-            ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-                    f'{percentage:.1f}%', ha='center', va='bottom', fontsize=8)
-        
-        # 5. 连续变化过程分类
+        # 5. 相空间图（速度vs位置）
         ax5 = axes[1, 1]
+        # 使用滑动窗口估计瞬时速度
+        velocity_window = 5
+        velocities = []
+        positions = []
         
-        # 定义过程类型
-        stable_mask = np.abs(first_derivative) <= 10
-        improving_mask = first_derivative > 10
-        degrading_mask = first_derivative < -10
+        for i in range(velocity_window, len(self.visibility) - velocity_window):
+            pos = self.visibility[i]
+            vel = (self.visibility[i+velocity_window] - self.visibility[i-velocity_window]) / (2 * velocity_window)
+            positions.append(pos)
+            velocities.append(vel)
         
-        # 绘制不同类型的过程
-        ax5.scatter(self.time_index[stable_mask], self.visibility[stable_mask], 
-                   c='yellow', alpha=0.7, s=15, label=f'稳定过程 ({np.sum(stable_mask)}点)')
-        ax5.scatter(self.time_index[improving_mask], self.visibility[improving_mask], 
-                   c='green', alpha=0.7, s=15, label=f'改善过程 ({np.sum(improving_mask)}点)')
-        ax5.scatter(self.time_index[degrading_mask], self.visibility[degrading_mask], 
-                   c='red', alpha=0.7, s=15, label=f'恶化过程 ({np.sum(degrading_mask)}点)')
+        scatter = ax5.scatter(positions, velocities, c=range(len(positions)), 
+                            cmap='viridis', alpha=0.6, s=20)
         
-        ax5.set_xlabel('时间步长')
-        ax5.set_ylabel('能见度 (m)')
-        ax5.set_title('能见度变化过程分类')
-        ax5.legend()
+        ax5.set_xlabel('能见度 (m)', fontproperties='SimHei')
+        ax5.set_ylabel('变化速率 (m/步)', fontproperties='SimHei')
+        ax5.set_title('相空间轨迹 (位置-速度)', fontproperties='SimHei')
         ax5.grid(True, alpha=0.3)
         
-        # 6. 动力学方程总结
+        # 添加颜色条
+        cbar = plt.colorbar(scatter, ax=ax5)
+        cbar.set_label('时间步长', fontproperties='SimHei')
+        
+        # 6. 连续性指标评估
         ax6 = axes[1, 2]
         ax6.axis('off')
         
-        # 统计信息
-        stats_text = "连续变化动力学总结\n\n"
-        stats_text += f"数据基本统计:\n"
-        stats_text += f"• 观测点数: {len(self.visibility)}\n"
-        stats_text += f"• 时间跨度: {len(self.visibility)-1} 步\n\n"
+        # 计算连续性指标
+        # 1. 平滑度（二阶导数的方差）
+        smoothness = np.var(second_diff)
         
-        stats_text += f"变化速率统计:\n"
-        stats_text += f"• 平均速率: {np.mean(first_derivative):.2f} m/步\n"
-        stats_text += f"• 速率标准差: {np.std(first_derivative):.2f} m/步\n"
-        stats_text += f"• 最大增速: {np.max(first_derivative):.1f} m/步\n"
-        stats_text += f"• 最大减速: {np.min(first_derivative):.1f} m/步\n\n"
+        # 2. 连续性（大跳跃的频率）
+        threshold = 2 * np.std(first_diff)
+        large_jumps = np.sum(np.abs(first_diff) > threshold)
+        continuity_score = 1 - (large_jumps / len(first_diff))
         
-        stats_text += f"过程分布:\n"
-        stats_text += f"• 稳定过程: {np.sum(stable_mask)/len(first_derivative)*100:.1f}%\n"
-        stats_text += f"• 改善过程: {np.sum(improving_mask)/len(first_derivative)*100:.1f}%\n"
-        stats_text += f"• 恶化过程: {np.sum(degrading_mask)/len(first_derivative)*100:.1f}%\n\n"
+        # 3. 预测性（自相关强度）
+        autocorr = np.corrcoef(self.visibility[:-1], self.visibility[1:])[0, 1]
         
-        stats_text += f"最优模型:\n"
-        stats_text += f"• 模型类型: {best_model['name']}\n"
-        stats_text += f"• R² 得分: {best_model.get('r2_test', best_model.get('r2', 0)):.4f}\n"
-        stats_text += f"• 预测精度: ±{best_model.get('rmse_test', best_model.get('rmse', 0)):.1f}m"
+        # 4. 稳定性（变化率的标准差）
+        stability = 1 / (1 + np.std(first_diff))
         
-        ax6.text(0.05, 0.95, stats_text, transform=ax6.transAxes, fontsize=9,
-                bbox=dict(boxstyle="round,pad=0.5", facecolor="lightsteelblue", alpha=0.8),
+        # 5. 物理可实现性评分
+        max_change_rate = np.max(np.abs(first_diff))
+        physical_feasibility = min(1.0, 100 / max_change_rate) if max_change_rate > 0 else 1.0
+        
+        metrics_text = "连续变化动力学评估指标\n\n"
+        metrics_text += f"📊 连续性指标:\n"
+        metrics_text += f"• 平滑度: {smoothness:.2f}\n"
+        metrics_text += f"• 连续性得分: {continuity_score:.3f}\n"
+        metrics_text += f"• 时间相关性: {autocorr:.3f}\n"
+        metrics_text += f"• 稳定性指数: {stability:.3f}\n"
+        metrics_text += f"• 物理可行性: {physical_feasibility:.3f}\n\n"
+        
+        metrics_text += f"🔍 动力学特征:\n"
+        metrics_text += f"• 最大变化率: {max_change_rate:.2f} m/步\n"
+        metrics_text += f"• 突变事件: {large_jumps} 次\n"
+        metrics_text += f"• 变化周期性: {'强' if autocorr > 0.7 else '中等' if autocorr > 0.3 else '弱'}\n"
+        
+        # 综合评分
+        overall_score = np.mean([continuity_score, autocorr, stability, physical_feasibility])
+        metrics_text += f"\n🎯 综合连续性评分: {overall_score:.3f}/1.000\n"
+        
+        if overall_score > 0.8:
+            quality = "优秀"
+            color = "lightgreen"
+        elif overall_score > 0.6:
+            quality = "良好"  
+            color = "lightyellow"
+        else:
+            quality = "一般"
+            color = "lightcoral"
+            
+        metrics_text += f"评价等级: {quality}"
+        
+        ax6.text(0.05, 0.95, metrics_text, transform=ax6.transAxes, fontsize=10,
+                bbox=dict(boxstyle="round,pad=0.5", facecolor=color, alpha=0.8),
                 verticalalignment='top', fontfamily='monospace')
         
         plt.tight_layout()
+        
+        # 保存图片
+        save_path = os.path.join(self.results_dir, "04_连续变化动力学分析.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"📊 连续变化动力学分析图表已保存: {save_path}")
         plt.show()
 
     def create_model_performance_table(self) -> None:
@@ -2288,6 +2545,10 @@ class ContinuousVisibilityModel:
         if not self.models:
             print("⚠️ 没有可用的模型结果")
             return
+        
+        # 强化中文字体设置
+        plt.rcParams['font.sans-serif'] = ['SimHei', 'Microsoft YaHei', 'DejaVu Sans']
+        plt.rcParams['axes.unicode_minus'] = False
         
         # 准备表格数据
         table_data = []
@@ -2368,8 +2629,13 @@ class ContinuousVisibilityModel:
                         else:
                             table[(i, j)].set_facecolor('#FFB6C1')  # 浅粉色
         
-        plt.title('问题二：连续变化数学模型性能对比表', fontsize=16, fontweight='bold', pad=20)
+        plt.title('问题二：连续变化数学模型性能对比表', fontsize=16, fontweight='bold', pad=20, fontproperties='SimHei')
         plt.tight_layout()
+        
+        # 保存图片
+        save_path = os.path.join(self.results_dir, "05_模型性能对比表格.png")
+        plt.savefig(save_path, dpi=300, bbox_inches='tight', facecolor='white')
+        print(f"📊 模型性能对比表格已保存: {save_path}")
         plt.show()
         
         # 同时打印表格数据（用于论文复制）
