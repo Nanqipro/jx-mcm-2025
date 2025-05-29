@@ -1454,15 +1454,31 @@ class ContinuousVisibilityModel:
         print(f"\n📐 模型类型: {model_name}")
         print(f"📊 测试集性能: R² = {best_model.get('r2_test', best_model.get('r2', 0)):.8f}")
         
+        # 添加调试信息
+        print(f"🔍 调试信息: 模型名称='{model_name}', 可用键={list(best_model.keys())}")
+        
         if 'state_space' in best_model.get('name', '').lower():
             self._extract_state_space_parameters_detailed(best_model)
         elif 'differential_equation' in best_model.get('name', '').lower():
             self._extract_differential_equation_parameters_detailed(best_model)
         elif 'nonlinear' in best_model.get('name', '').lower():
             self._extract_nonlinear_parameters_detailed(best_model)
-        elif 'ensemble' in best_model.get('name', '').lower():
+        elif 'ensemble' in best_model.get('name', '').lower() or '集成' in best_model.get('name', ''):
+            # 处理集成模型 - 如果主要基于状态空间模型，则提取状态空间参数
             self._extract_ensemble_parameters_detailed(best_model)
-    
+        else:
+            print(f"⚠️ 未识别的模型类型: {model_name}")
+            print("尝试通用参数提取...")
+            if 'kf' in best_model:
+                self._extract_state_space_parameters_detailed(best_model)
+            elif 'params' in best_model:
+                print("发现参数，但无法确定模型类型")
+                for key, value in best_model.items():
+                    if key not in ['name', 'predicted', 'predicted_train', 'predicted_test']:
+                        print(f"   {key}: {value}")
+            else:
+                print("❌ 无法识别模型参数结构")
+
     def _extract_state_space_parameters_detailed(self, model: Dict[str, Any]) -> None:
         """提取状态空间模型的具体参数"""
         print(f"\n🎯 状态空间模型详细参数:")
@@ -1650,9 +1666,15 @@ class ContinuousVisibilityModel:
         
         # 如果主要是状态空间模型，显示其详细参数
         if 'state_space' in weights and weights['state_space'] > 0.5:
-            print(f"\n💡 由于集成模型主要基于状态空间模型，其详细参数如下：")
+            print(f"\n💡 由于集成模型主要基于状态空间模型 (权重={weights['state_space']:.1%})，其详细参数如下：")
             if hasattr(self, 'models') and 'state_space' in self.models:
-                self._extract_state_space_parameters_detailed(self.models['state_space'])
+                state_space_model = self.models['state_space']
+                print(f"   正在提取状态空间模型的详细参数...")
+                self._extract_state_space_parameters_detailed(state_space_model)
+            else:
+                print("❌ 无法访问原始状态空间模型")
+        else:
+            print(f"\n💡 集成模型基于多个组件，无法提取单一模型的详细参数")
 
 
 def main():
