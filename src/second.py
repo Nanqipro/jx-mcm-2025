@@ -1139,7 +1139,7 @@ def main():
     analyzer = EnhancedVisibilityAnalyzer()
 
     # 数据文件路径
-    csv_file = 'blur.csv'  # 请替换为你的文件路径
+    csv_file = '../datasets/blur.csv'  # 请替换为你的文件路径
 
     if analyzer.load_data(csv_file):
         # 运行完整分析
@@ -1166,7 +1166,7 @@ def main():
 
 
 # 快速启动函数
-def quick_analysis(csv_file='blur.csv', predict_minutes=60):
+def quick_analysis(csv_file='../datasets/blur.csv', predict_minutes=60):
     """快速分析函数 - 适合初学者"""
     print("🚀 快速分析模式启动...")
 
@@ -1189,7 +1189,7 @@ def quick_analysis(csv_file='blur.csv', predict_minutes=60):
 
 
 # 仅提取公式的简化函数
-def extract_formula_only(csv_file='blur.csv'):
+def extract_formula_only(csv_file='../datasets/blur.csv'):
     """仅提取最佳模型公式"""
     analyzer = EnhancedVisibilityAnalyzer()
 
@@ -1211,7 +1211,7 @@ if __name__ == "__main__":
     main()
 
     # 如果只需要快速分析，取消下面的注释:
-    # quick_analysis()
+    quick_analysis()
 
     # 如果只需要提取公式，取消下面的注释:
-    # extract_formula_only()
+    extract_formula_only()
