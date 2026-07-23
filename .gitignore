@@ -1,0 +1,46 @@
+# Operating-system metadata
+.DS_Store
+**/.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Python caches and local environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# Notebook and editor state
+.ipynb_checkpoints/
+.idea/
+.vscode/
+.cursor/
+.claude/
+.codex/
+*.code-workspace
+
+# Credentials and machine-local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.pfx
+
+# Non-public competition inputs and local generated data
+/data/private/
+/data/demo/
+/.private-release-backup/
+
+# Regenerable local outputs
+/results/generated/
+*.log
+

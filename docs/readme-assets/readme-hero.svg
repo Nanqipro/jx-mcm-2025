@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="480" viewBox="0 0 1200 480" role="img" aria-labelledby="title desc">
+  <title id="title">Foggy runway visibility modelling workflow</title>
+  <desc id="desc">A stylised runway connects video features, continuous dynamics and multi-source visibility regression.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#091b2b"/>
+      <stop offset="0.55" stop-color="#173f52"/>
+      <stop offset="1" stop-color="#6e8b8f"/>
+    </linearGradient>
+    <linearGradient id="fog" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#dbe9e7" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#e9f2ef" stop-opacity="0.62"/>
+    </linearGradient>
+    <filter id="blur"><feGaussianBlur stdDeviation="18"/></filter>
+  </defs>
+
+  <rect width="1200" height="480" rx="26" fill="url(#sky)"/>
+  <circle cx="990" cy="86" r="48" fill="#e6f2d4" opacity="0.72" filter="url(#blur)"/>
+  <path d="M0 235 C220 190 420 270 620 220 S980 195 1200 235 V480 H0Z" fill="url(#fog)"/>
+
+  <path d="M515 480 L578 230 L622 230 L690 480Z" fill="#17232b" opacity="0.92"/>
+  <path d="M593 450 L597 400 M589 370 L594 325 M586 300 L590 265" stroke="#f4d477" stroke-width="7" stroke-linecap="round"/>
+  <path d="M515 480 L578 230 M690 480 L622 230" stroke="#d9e3df" stroke-width="4" opacity="0.78"/>
+
+  <text x="60" y="78" fill="#f8fbfa" font-family="Inter, system-ui, sans-serif" font-size="40" font-weight="700">雾天机场能见度建模</text>
+  <text x="62" y="116" fill="#c5d8d5" font-family="Inter, system-ui, sans-serif" font-size="19">2025 江西省数学建模竞赛 · 视频特征 × 连续动力学 × AMOS 气象</text>
+
+  <g transform="translate(55 168)">
+    <rect width="292" height="152" rx="18" fill="#102a38" stroke="#70c1b3" stroke-width="2" opacity="0.96"/>
+    <circle cx="42" cy="42" r="20" fill="#70c1b3"/>
+    <text x="42" y="49" text-anchor="middle" fill="#08202b" font-family="system-ui" font-size="19" font-weight="700">1</text>
+    <text x="76" y="48" fill="#f6fbfa" font-family="system-ui" font-size="23" font-weight="650">图像模糊度</text>
+    <text x="28" y="88" fill="#bfd2d0" font-family="system-ui" font-size="16">抽帧 · 边缘 · 频域 · 对比度</text>
+    <path d="M28 118 L74 103 L118 111 L164 82 L214 96 L260 65" fill="none" stroke="#70c1b3" stroke-width="4" stroke-linecap="round"/>
+  </g>
+
+  <g transform="translate(454 135)">
+    <rect width="292" height="152" rx="18" fill="#102a38" stroke="#f4d477" stroke-width="2" opacity="0.96"/>
+    <circle cx="42" cy="42" r="20" fill="#f4d477"/>
+    <text x="42" y="49" text-anchor="middle" fill="#302707" font-family="system-ui" font-size="19" font-weight="700">2</text>
+    <text x="76" y="48" fill="#f6fbfa" font-family="system-ui" font-size="23" font-weight="650">连续变化模型</text>
+    <text x="28" y="88" fill="#bfd2d0" font-family="system-ui" font-size="16">时间序列 · 状态空间 · 动力学</text>
+    <path d="M28 116 C65 75 92 139 128 98 S196 72 260 112" fill="none" stroke="#f4d477" stroke-width="4"/>
+  </g>
+
+  <g transform="translate(853 168)">
+    <rect width="292" height="152" rx="18" fill="#102a38" stroke="#ef8354" stroke-width="2" opacity="0.96"/>
+    <circle cx="42" cy="42" r="20" fill="#ef8354"/>
+    <text x="42" y="49" text-anchor="middle" fill="#35160b" font-family="system-ui" font-size="19" font-weight="700">3</text>
+    <text x="76" y="48" fill="#f6fbfa" font-family="system-ui" font-size="23" font-weight="650">多源回归</text>
+    <text x="28" y="88" fill="#bfd2d0" font-family="system-ui" font-size="16">图像 + 温湿压 + 风场 + 能见度</text>
+    <g fill="#ef8354"><circle cx="50" cy="119" r="6"/><circle cx="92" cy="106" r="6"/><circle cx="136" cy="122" r="6"/><circle cx="180" cy="91" r="6"/><circle cx="234" cy="72" r="6"/></g>
+    <path d="M43 126 L241 66" stroke="#ef8354" stroke-width="3" opacity="0.7"/>
+  </g>
+
+  <text x="60" y="436" fill="#e2ecea" font-family="system-ui" font-size="16">Research prototype · Reproducible structure · Public-data boundaries</text>
+</svg>
